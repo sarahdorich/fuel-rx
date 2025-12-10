@@ -85,13 +85,23 @@ CREATE TRIGGER update_user_profiles_updated_at
 
 -- Function to create user profile on signup
 CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER 
+LANGUAGE plpgsql 
+SECURITY DEFINER
+AS '
 BEGIN
-    INSERT INTO user_profiles (id, email)
+    INSERT INTO public.user_profiles (id, email)
     VALUES (NEW.id, NEW.email);
     RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+    RAISE LOG ''Error in handle_new_user: %'', SQLERRM;
+    RETURN NEW;
 END;
-$$ language 'plpgsql' SECURITY DEFINER;
+';
+
+GRANT USAGE ON SCHEMA public TO postgres, anon, authenticated, service_role;
+GRANT ALL ON public.user_profiles TO postgres, service_role;
+GRANT SELECT, INSERT, UPDATE ON public.user_profiles TO authenticated;
 
 -- Trigger to create profile on user signup
 CREATE TRIGGER on_auth_user_created

@@ -93,7 +93,7 @@ The grocery list should consolidate all ingredients across the week with combine
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 8000,
+    max_tokens: 16000,
     messages: [
       {
         role: 'user',
@@ -104,9 +104,16 @@ The grocery list should consolidate all ingredients across the week with combine
 
   const responseText = message.content[0].type === 'text' ? message.content[0].text : '';
 
-  // Parse the JSON response
+  // Parse the JSON response - strip markdown code blocks if present
   try {
-    const parsed = JSON.parse(responseText);
+    let jsonText = responseText.trim();
+
+    // Remove markdown code blocks if Claude wrapped the response
+    if (jsonText.startsWith('```')) {
+      jsonText = jsonText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+    }
+
+    const parsed = JSON.parse(jsonText);
     return {
       days: parsed.days,
       grocery_list: parsed.grocery_list,
