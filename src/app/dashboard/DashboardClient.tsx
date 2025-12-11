@@ -138,7 +138,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
             </button>
             {generating && (
               <p className="text-sm text-gray-500 mt-3 text-center">
-                This may take 30-60 seconds
+                This may take a couple minutes
               </p>
             )}
           </div>

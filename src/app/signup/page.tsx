@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
@@ -11,7 +10,7 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
+  const [success, setSuccess] = useState(false)
   const supabase = createClient()
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -44,9 +43,37 @@ export default function SignupPage() {
       return
     }
 
-    // Redirect to onboarding after signup
-    router.push('/onboarding')
-    router.refresh()
+    // Show success message - user needs to verify email before signing in
+    setSuccess(true)
+    setLoading(false)
+  }
+
+  if (success) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-8">
+            <Link href="/" className="text-3xl font-bold text-primary-600">
+              Coach Hill&apos;s FuelRx
+            </Link>
+          </div>
+
+          <div className="card text-center">
+            <div className="bg-green-50 text-green-700 p-4 rounded-lg mb-6">
+              <h2 className="text-xl font-bold mb-2">Check your email!</h2>
+              <p className="text-sm">
+                We&apos;ve sent a verification link to <strong>{email}</strong>.
+                Please click the link in your email to verify your account, then sign in.
+              </p>
+            </div>
+
+            <Link href="/login" className="btn-primary w-full inline-block text-center">
+              Go to Sign In
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
