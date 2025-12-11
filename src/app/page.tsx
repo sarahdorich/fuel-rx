@@ -26,8 +26,8 @@ export default function Home() {
             <span className="text-primary-600">CrossFit Draper Athletes</span>
           </h2>
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
-            Take the guesswork out of nutrition. Get personalized weekly meal plans
-            optimized for your macros, training schedule, and dietary preferences.
+            Get personalized weekly meal plans optimized for your macros 
+            and dietary preferences.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link href="/signup" className="btn-primary text-lg px-8 py-3">
