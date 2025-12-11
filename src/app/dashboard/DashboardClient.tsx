@@ -56,7 +56,7 @@ export default function DashboardClient({ profile, recentPlan }: Props) {
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary-600">FuelRx</h1>
+          <h1 className="text-2xl font-bold text-primary-600">Coach Hill&apos;s FuelRx</h1>
           <div className="flex items-center gap-4">
             <Link href="/history" className="text-gray-600 hover:text-gray-900">
               My Plans

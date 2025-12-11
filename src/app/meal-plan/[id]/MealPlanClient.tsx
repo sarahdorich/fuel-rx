@@ -64,7 +64,7 @@ export default function MealPlanClient({ mealPlan }: Props) {
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="text-2xl font-bold text-primary-600">
-            FuelRx
+            Coach Hill&apos;s FuelRx
           </Link>
           <div className="flex items-center gap-4">
             <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
@@ -209,7 +209,7 @@ function MealCard({
 }) {
   const mealTypeColors: Record<string, string> = {
     breakfast: 'bg-yellow-100 text-yellow-800',
-    lunch: 'bg-green-100 text-green-800',
+    lunch: 'bg-teal-100 text-teal-800',
     dinner: 'bg-blue-100 text-blue-800',
     snack: 'bg-purple-100 text-purple-800',
   }

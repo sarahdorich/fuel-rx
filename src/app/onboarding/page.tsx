@@ -108,7 +108,7 @@ export default function OnboardingPage() {
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-2xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-primary-600">FuelRx</h1>
+          <h1 className="text-3xl font-bold text-primary-600">Coach Hill&apos;s FuelRx</h1>
           <h2 className="mt-4 text-xl text-gray-700">Let&apos;s set up your profile</h2>
         </div>
 

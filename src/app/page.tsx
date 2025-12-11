@@ -6,7 +6,7 @@ export default function Home() {
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary-600">FuelRx</h1>
+          <h1 className="text-2xl font-bold text-primary-600">Coach Hill&apos;s FuelRx</h1>
           <div className="space-x-4">
             <Link href="/login" className="text-gray-600 hover:text-gray-900">
               Log in
@@ -23,7 +23,7 @@ export default function Home() {
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
           <h2 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-6">
             AI-Powered Meal Planning for{' '}
-            <span className="text-primary-600">CrossFit Athletes</span>
+            <span className="text-primary-600">CrossFit Draper Athletes</span>
           </h2>
           <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
             Take the guesswork out of nutrition. Get personalized weekly meal plans
@@ -78,7 +78,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="bg-gray-900 text-gray-400 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-primary-400 font-semibold mb-2">FuelRx</p>
+          <p className="text-primary-400 font-semibold mb-2">Coach Hill&apos;s FuelRx</p>
           <p className="text-sm">Built for the CrossFit community</p>
         </div>
       </footer>

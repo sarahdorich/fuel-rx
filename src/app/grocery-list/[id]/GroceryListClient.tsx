@@ -59,7 +59,7 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
       <header className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <Link href="/dashboard" className="text-2xl font-bold text-primary-600">
-            FuelRx
+            Coach Hill&apos;s FuelRx
           </Link>
           <div className="flex items-center gap-4">
             <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
