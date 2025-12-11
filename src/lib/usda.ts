@@ -67,7 +67,7 @@ export async function searchFood(query: string): Promise<USDAFood[]> {
   }
 
   const normalizedQuery = normalizeIngredientName(query);
-  const url = `${USDA_BASE_URL}/foods/search?query=${encodeURIComponent(normalizedQuery)}&api_key=${USDA_API_KEY}&pageSize=5&dataType=SR Legacy,Foundation`;
+  const url = `${USDA_BASE_URL}/foods/search?query=${encodeURIComponent(normalizedQuery)}&api_key=${USDA_API_KEY}&pageSize=10&dataType=SR Legacy,Foundation`;
 
   const response = await fetch(url);
   if (!response.ok) {
@@ -80,6 +80,67 @@ export async function searchFood(query: string): Promise<USDAFood[]> {
     description: food.description,
     score: food.score,
   }));
+}
+
+/**
+ * Select the best matching food from search results
+ * Uses heuristics to avoid common mismatches (e.g., cod liver oil vs cod fish)
+ */
+function selectBestMatch(query: string, results: USDAFood[]): USDAFood | null {
+  if (results.length === 0) return null;
+
+  const queryLower = query.toLowerCase();
+  const queryWords = queryLower.split(/\s+/).filter(w => w.length > 2);
+
+  // Terms that indicate processed/derivative products we usually don't want
+  const excludeTerms = ['oil', 'flour', 'powder', 'extract', 'juice', 'sauce', 'syrup', 'dried', 'canned', 'frozen'];
+  // Unless the query specifically asks for them
+  const queryHasExcludeTerm = excludeTerms.some(term => queryLower.includes(term));
+
+  // Score each result
+  const scored = results.map(food => {
+    const descLower = food.description.toLowerCase();
+    let score = food.score || 0;
+
+    // Bonus for exact word matches in description
+    for (const word of queryWords) {
+      if (descLower.includes(word)) {
+        score += 50;
+      }
+    }
+
+    // Bonus for "raw" when query doesn't specify cooking method
+    if (descLower.includes('raw') && !queryLower.includes('cooked')) {
+      score += 30;
+    }
+
+    // Penalty for derivative products unless query asks for them
+    if (!queryHasExcludeTerm) {
+      for (const term of excludeTerms) {
+        if (descLower.includes(term)) {
+          score -= 200;
+        }
+      }
+    }
+
+    // Penalty if description has "liver" or "organ" when query doesn't
+    if (!queryLower.includes('liver') && descLower.includes('liver')) {
+      score -= 300;
+    }
+    if (!queryLower.includes('organ') && descLower.includes('organ')) {
+      score -= 300;
+    }
+
+    // Bonus for shorter descriptions (usually more generic/common items)
+    score -= food.description.length * 0.5;
+
+    return { food, score };
+  });
+
+  // Sort by our custom score
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored[0].food;
 }
 
 /**
@@ -157,30 +218,101 @@ function extractNutrients(food: USDAFoodDetails): NutritionalData {
  */
 function normalizeIngredientName(name: string): string {
   const normalizations: Record<string, string> = {
+    // Proteins
     'chicken breast': 'chicken broilers breast meat raw',
+    'chicken thigh': 'chicken broilers thigh meat raw',
+    'chicken thighs': 'chicken broilers thigh meat raw',
     'ground beef': 'beef ground raw',
     'ground turkey': 'turkey ground raw',
     'salmon': 'salmon atlantic raw',
     'salmon fillet': 'salmon atlantic raw',
+    'cod': 'fish cod atlantic raw',
+    'cod fillet': 'fish cod atlantic raw',
+    'cod filet': 'fish cod atlantic raw',
+    'tilapia': 'fish tilapia raw',
+    'tilapia fillet': 'fish tilapia raw',
+    'tuna': 'fish tuna raw',
+    'shrimp': 'crustaceans shrimp raw',
+    'tofu': 'tofu raw firm',
+    'tempeh': 'tempeh',
+    'turkey breast': 'turkey breast meat raw',
+    'pork chop': 'pork loin raw',
+    'pork tenderloin': 'pork tenderloin raw',
+    'steak': 'beef steak raw',
+    'beef steak': 'beef steak raw',
+
+    // Grains & Carbs
     'brown rice': 'rice brown long-grain raw',
     'white rice': 'rice white long-grain raw',
-    'sweet potato': 'sweet potato raw',
-    'broccoli': 'broccoli raw',
-    'spinach': 'spinach raw',
-    'olive oil': 'oil olive salad or cooking',
-    'coconut oil': 'oil coconut',
-    'greek yogurt': 'yogurt greek plain',
-    'egg': 'egg whole raw',
-    'eggs': 'egg whole raw',
+    'quinoa': 'quinoa uncooked',
+    'pasta': 'pasta dry unenriched',
+    'bread': 'bread whole wheat',
+    'whole wheat bread': 'bread whole wheat',
     'oats': 'oats regular or quick',
     'rolled oats': 'oats regular or quick',
-    'almond butter': 'almond butter plain',
-    'peanut butter': 'peanut butter smooth',
+    'sweet potato': 'sweet potato raw',
+    'potato': 'potato raw',
+    'potatoes': 'potato raw',
+
+    // Vegetables
+    'broccoli': 'broccoli raw',
+    'spinach': 'spinach raw',
+    'kale': 'kale raw',
+    'lettuce': 'lettuce raw',
+    'tomato': 'tomato raw',
+    'tomatoes': 'tomato raw',
+    'onion': 'onion raw',
+    'garlic': 'garlic raw',
+    'bell pepper': 'peppers sweet raw',
+    'carrot': 'carrot raw',
+    'carrots': 'carrot raw',
+    'zucchini': 'squash zucchini raw',
+    'cucumber': 'cucumber raw',
+    'asparagus': 'asparagus raw',
+    'green beans': 'beans snap green raw',
+    'mushrooms': 'mushrooms raw',
+    'cauliflower': 'cauliflower raw',
+
+    // Fruits
     'banana': 'banana raw',
     'apple': 'apple raw',
+    'orange': 'orange raw',
+    'strawberries': 'strawberries raw',
+    'blueberries': 'blueberries raw',
     'avocado': 'avocado raw',
+
+    // Dairy & Eggs
+    'greek yogurt': 'yogurt greek plain',
+    'yogurt': 'yogurt plain',
+    'milk': 'milk whole',
+    'egg': 'egg whole raw',
+    'eggs': 'egg whole raw',
+    'cheese': 'cheese cheddar',
+    'cottage cheese': 'cottage cheese',
+
+    // Fats & Oils
+    'olive oil': 'oil olive salad or cooking',
+    'coconut oil': 'oil coconut',
+    'butter': 'butter salted',
+
+    // Nuts & Seeds
+    'almond butter': 'almond butter plain',
+    'peanut butter': 'peanut butter smooth',
     'almonds': 'almonds raw',
     'walnuts': 'walnuts raw',
+    'cashews': 'cashews raw',
+    'peanuts': 'peanuts raw',
+    'chia seeds': 'seeds chia dried',
+    'flax seeds': 'seeds flaxseed',
+
+    // Legumes
+    'black beans': 'beans black cooked',
+    'chickpeas': 'chickpeas cooked',
+    'lentils': 'lentils cooked',
+
+    // Misc
+    'honey': 'honey',
+    'maple syrup': 'maple syrup',
   };
 
   const lowerName = name.toLowerCase().trim();
@@ -228,8 +360,13 @@ export async function getOrFetchIngredient(name: string): Promise<CachedIngredie
       return null;
     }
 
-    // Use the best match (first result)
-    const bestMatch = searchResults[0];
+    // Use smart matching to select the best result
+    const bestMatch = selectBestMatch(normalizedName, searchResults);
+    if (!bestMatch) {
+      console.warn(`No suitable USDA match found for: ${name}`);
+      return null;
+    }
+    console.log(`USDA: "${name}" -> "${bestMatch.description}" (fdc:${bestMatch.fdcId})`);
     const nutritionData = await getFoodDetails(bestMatch.fdcId);
 
     // 3. Store in database cache
