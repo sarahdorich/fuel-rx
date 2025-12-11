@@ -4,8 +4,11 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { DIETARY_PREFERENCE_LABELS } from '@/lib/types'
-import type { UserProfile, DietaryPreference } from '@/lib/types'
+import { DIETARY_PREFERENCE_LABELS, MEAL_TYPE_LABELS, DEFAULT_MEAL_CONSISTENCY_PREFS } from '@/lib/types'
+import type { UserProfile, DietaryPreference, MealType, MealConsistencyPrefs, PrepTime, MealsPerDay } from '@/lib/types'
+import EditMacrosModal from '@/components/EditMacrosModal'
+import EditPreferencesModal from '@/components/EditPreferencesModal'
+import EditVarietyModal from '@/components/EditVarietyModal'
 
 interface Props {
   profile: UserProfile | null
@@ -17,11 +20,17 @@ interface Props {
   } | null
 }
 
-export default function DashboardClient({ profile, recentPlan }: Props) {
+export default function DashboardClient({ profile: initialProfile, recentPlan }: Props) {
   const router = useRouter()
   const supabase = createClient()
+  const [profile, setProfile] = useState(initialProfile)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Modal states
+  const [showMacrosModal, setShowMacrosModal] = useState(false)
+  const [showPreferencesModal, setShowPreferencesModal] = useState(false)
+  const [showVarietyModal, setShowVarietyModal] = useState(false)
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -181,16 +190,24 @@ export default function DashboardClient({ profile, recentPlan }: Props) {
               </h3>
               <Link
                 href="/onboarding"
-                className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                className="text-gray-400 hover:text-gray-600 text-sm"
               >
-                Edit
+                Full Setup
               </Link>
             </div>
 
             {profile ? (
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <div>
-                  <p className="text-sm text-gray-500 mb-1">Daily Macros</p>
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm text-gray-500">Daily Macros</p>
+                    <button
+                      onClick={() => setShowMacrosModal(true)}
+                      className="text-primary-600 hover:text-primary-700 text-xs font-medium"
+                    >
+                      Edit
+                    </button>
+                  </div>
                   <div className="space-y-1">
                     <p className="font-medium">
                       {profile.target_calories} kcal
@@ -201,23 +218,59 @@ export default function DashboardClient({ profile, recentPlan }: Props) {
                   </div>
                 </div>
 
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Dietary Preferences</p>
-                  <p className="font-medium">
-                    {profile.dietary_prefs
-                      .map((pref: DietaryPreference) => DIETARY_PREFERENCE_LABELS[pref])
-                      .join(', ')}
-                  </p>
+                <div className="sm:col-span-1 lg:col-span-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm text-gray-500">Preferences</p>
+                    <button
+                      onClick={() => setShowPreferencesModal(true)}
+                      className="text-primary-600 hover:text-primary-700 text-xs font-medium"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-x-6 gap-y-1">
+                    <p className="font-medium">
+                      {profile.dietary_prefs
+                        .map((pref: DietaryPreference) => DIETARY_PREFERENCE_LABELS[pref])
+                        .join(', ')}
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {profile.meals_per_day} meals/day
+                    </p>
+                    <p className="text-sm text-gray-600">
+                      {profile.prep_time} min prep
+                    </p>
+                  </div>
                 </div>
 
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Meals Per Day</p>
-                  <p className="font-medium">{profile.meals_per_day} meals</p>
-                </div>
-
-                <div>
-                  <p className="text-sm text-gray-500 mb-1">Max Prep Time</p>
-                  <p className="font-medium">{profile.prep_time} minutes</p>
+                <div className="sm:col-span-2 lg:col-span-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm text-gray-500">Meal Variety</p>
+                    <button
+                      onClick={() => setShowVarietyModal(true)}
+                      className="text-primary-600 hover:text-primary-700 text-xs font-medium"
+                    >
+                      Edit
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(Object.keys(MEAL_TYPE_LABELS) as MealType[]).map((mealType) => {
+                      const prefs = profile.meal_consistency_prefs ?? DEFAULT_MEAL_CONSISTENCY_PREFS;
+                      const isConsistent = prefs[mealType] === 'consistent';
+                      return (
+                        <span
+                          key={mealType}
+                          className={`px-3 py-1 rounded-full text-sm ${
+                            isConsistent
+                              ? 'bg-primary-100 text-primary-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {MEAL_TYPE_LABELS[mealType]}: {isConsistent ? 'Same Daily' : 'Varied'}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -230,6 +283,45 @@ export default function DashboardClient({ profile, recentPlan }: Props) {
             )}
           </div>
         </div>
+
+        {/* Edit Modals */}
+        {profile && (
+          <>
+            <EditMacrosModal
+              isOpen={showMacrosModal}
+              onClose={() => setShowMacrosModal(false)}
+              currentValues={{
+                target_protein: profile.target_protein,
+                target_carbs: profile.target_carbs,
+                target_fat: profile.target_fat,
+                target_calories: profile.target_calories,
+              }}
+              onSave={(values) => {
+                setProfile({ ...profile, ...values })
+              }}
+            />
+            <EditPreferencesModal
+              isOpen={showPreferencesModal}
+              onClose={() => setShowPreferencesModal(false)}
+              currentValues={{
+                dietary_prefs: profile.dietary_prefs,
+                meals_per_day: profile.meals_per_day,
+                prep_time: profile.prep_time,
+              }}
+              onSave={(values) => {
+                setProfile({ ...profile, ...values })
+              }}
+            />
+            <EditVarietyModal
+              isOpen={showVarietyModal}
+              onClose={() => setShowVarietyModal(false)}
+              currentValues={profile.meal_consistency_prefs ?? DEFAULT_MEAL_CONSISTENCY_PREFS}
+              onSave={(values) => {
+                setProfile({ ...profile, meal_consistency_prefs: values })
+              }}
+            />
+          </>
+        )}
       </main>
     </div>
   )

@@ -3,10 +3,10 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { DietaryPreference, PrepTime, MealsPerDay, OnboardingData } from '@/lib/types'
-import { DIETARY_PREFERENCE_LABELS, PREP_TIME_OPTIONS, MEALS_PER_DAY_OPTIONS } from '@/lib/types'
+import type { DietaryPreference, PrepTime, MealsPerDay, OnboardingData, MealType, MealConsistency } from '@/lib/types'
+import { DIETARY_PREFERENCE_LABELS, PREP_TIME_OPTIONS, MEALS_PER_DAY_OPTIONS, DEFAULT_MEAL_CONSISTENCY_PREFS, MEAL_TYPE_LABELS } from '@/lib/types'
 
-const STEPS = ['basics', 'macros', 'preferences'] as const
+const STEPS = ['basics', 'macros', 'preferences', 'consistency'] as const
 type Step = typeof STEPS[number]
 
 export default function OnboardingPage() {
@@ -26,6 +26,7 @@ export default function OnboardingPage() {
     dietary_prefs: ['no_restrictions'],
     meals_per_day: 3,
     prep_time: 30,
+    meal_consistency_prefs: { ...DEFAULT_MEAL_CONSISTENCY_PREFS },
   })
 
   // Auto-calculate calories when macros change
@@ -70,6 +71,7 @@ export default function OnboardingPage() {
         dietary_prefs: formData.dietary_prefs,
         meals_per_day: formData.meals_per_day,
         prep_time: formData.prep_time,
+        meal_consistency_prefs: formData.meal_consistency_prefs,
       })
       .eq('id', user.id)
 
@@ -102,6 +104,16 @@ export default function OnboardingPage() {
 
       return { ...prev, dietary_prefs: newPrefs }
     })
+  }
+
+  const toggleMealConsistency = (mealType: MealType) => {
+    setFormData(prev => ({
+      ...prev,
+      meal_consistency_prefs: {
+        ...prev.meal_consistency_prefs,
+        [mealType]: prev.meal_consistency_prefs[mealType] === 'varied' ? 'consistent' : 'varied',
+      },
+    }))
   }
 
   return (
@@ -325,6 +337,69 @@ export default function OnboardingPage() {
             </div>
           )}
 
+          {/* Step 4: Meal Consistency */}
+          {currentStep === 'consistency' && (
+            <div className="space-y-6">
+              <h3 className="text-xl font-semibold text-gray-900">Meal Variety Preferences</h3>
+              <p className="text-gray-600">
+                Choose which meals you want to keep the same each day vs. vary throughout the week.
+                Consistent meals simplify meal prep and grocery shopping.
+              </p>
+
+              <div className="space-y-4">
+                {(Object.keys(MEAL_TYPE_LABELS) as MealType[]).map((mealType) => (
+                  <div
+                    key={mealType}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg"
+                  >
+                    <span className="font-medium text-gray-900">
+                      {MEAL_TYPE_LABELS[mealType]}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (formData.meal_consistency_prefs[mealType] !== 'consistent') {
+                            toggleMealConsistency(mealType)
+                          }
+                        }}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          formData.meal_consistency_prefs[mealType] === 'consistent'
+                            ? 'bg-primary-600 text-white'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        Same Daily
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (formData.meal_consistency_prefs[mealType] !== 'varied') {
+                            toggleMealConsistency(mealType)
+                          }
+                        }}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                          formData.meal_consistency_prefs[mealType] === 'varied'
+                            ? 'bg-primary-600 text-white'
+                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                        }`}
+                      >
+                        Varied
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-primary-50 p-4 rounded-lg">
+                <p className="text-sm text-primary-800">
+                  <strong>Tip:</strong> Keeping breakfast and snacks consistent is a popular choice
+                  for athletes who want variety at dinner but easy meal prep for busy mornings.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Navigation buttons */}
           <div className="mt-8 flex justify-between">
             {currentStep !== 'basics' ? (
@@ -339,7 +414,7 @@ export default function OnboardingPage() {
               <div />
             )}
 
-            {currentStep !== 'preferences' ? (
+            {currentStep !== 'consistency' ? (
               <button
                 type="button"
                 onClick={handleNext}
