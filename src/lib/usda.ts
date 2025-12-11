@@ -174,48 +174,63 @@ export async function getFoodDetails(fdcId: number): Promise<NutritionalData> {
 function extractNutrients(food: USDAFoodDetails): NutritionalData {
   const nutrients = food.foodNutrients || [];
 
-  // USDA nutrient names to look for
-  const calorieNames = ['energy', 'energy (atwater general factors)'];
-  const proteinNames = ['protein'];
-  const carbNames = ['carbohydrate, by difference', 'carbohydrates'];
-  const fatNames = ['total lipid (fat)', 'total fat'];
-
-  // USDA nutrient numbers as fallback (more reliable)
-  const NUTRIENT_NUMBERS = {
-    calories: ['208', '957'], // Energy in kcal
-    protein: ['203'],
-    carbs: ['205'],
-    fat: ['204'],
+  // USDA nutrient numbers (these are the standard identifiers)
+  const NUTRIENT_NUMBERS: Record<string, string[]> = {
+    calories: ['208', '1008'], // Energy in kcal
+    protein: ['203', '1003'],
+    carbs: ['205', '1005'],
+    fat: ['204', '1004'],
   };
 
-  const findNutrient = (names: string[], numbers: string[]): number => {
-    for (const n of nutrients) {
-      // Get the nutrient name - handle both flat and nested structures
-      const nutrientName = n.nutrientName || n.nutrient?.name || '';
-      // Convert nutrient number to string for comparison (API may return number or string)
-      const nutrientNumber = String(n.nutrientNumber || n.nutrient?.number || '');
-      const nutrientValue = n.value ?? n.amount ?? 0;
+  // Build a map of nutrient number -> amount for quick lookup
+  const nutrientMap = new Map<string, number>();
 
-      // Try matching by number first (more reliable)
-      if (nutrientNumber && numbers.includes(nutrientNumber)) {
-        return nutrientValue;
-      }
+  for (const n of nutrients) {
+    const num = String(n.nutrientNumber || n.nutrient?.number || '');
+    const val = n.value ?? n.amount;
 
-      // Fall back to name matching
-      if (nutrientName && names.includes(nutrientName.toLowerCase())) {
-        return nutrientValue;
+    if (num && val !== undefined && val !== null) {
+      nutrientMap.set(num, val);
+    }
+  }
+
+  // Extract each macro by nutrient number
+  const findByNumbers = (numbers: string[]): number => {
+    for (const num of numbers) {
+      const val = nutrientMap.get(num);
+      if (val !== undefined) {
+        return val;
       }
     }
     return 0;
   };
 
-  return {
+  const result = {
     fdcId: food.fdcId,
-    calories: findNutrient(calorieNames, NUTRIENT_NUMBERS.calories),
-    protein: findNutrient(proteinNames, NUTRIENT_NUMBERS.protein),
-    carbs: findNutrient(carbNames, NUTRIENT_NUMBERS.carbs),
-    fat: findNutrient(fatNames, NUTRIENT_NUMBERS.fat),
+    calories: findByNumbers(NUTRIENT_NUMBERS.calories),
+    protein: findByNumbers(NUTRIENT_NUMBERS.protein),
+    carbs: findByNumbers(NUTRIENT_NUMBERS.carbs),
+    fat: findByNumbers(NUTRIENT_NUMBERS.fat),
   };
+
+  // Debug logging
+  console.log(`extractNutrients for fdcId ${food.fdcId}: cal=${result.calories} p=${result.protein} c=${result.carbs} f=${result.fat}`);
+
+  // If carbs is 0, log what nutrients we actually received to debug
+  if (result.carbs === 0 && result.calories > 0) {
+    console.warn(`WARNING: carbs=0 but calories=${result.calories}. Checking for nutrient 205...`);
+    const carbNutrient = nutrients.find(n => {
+      const num = String(n.nutrientNumber || n.nutrient?.number || '');
+      return num === '205' || num === '1005';
+    });
+    if (carbNutrient) {
+      console.warn(`Found carb nutrient:`, JSON.stringify(carbNutrient));
+    } else {
+      console.warn(`No carb nutrient (205 or 1005) found in ${nutrients.length} nutrients`);
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -451,8 +466,17 @@ export function calculateMacrosForAmount(
  * Returns false if the data seems corrupted or incomplete
  */
 function isCacheDataValid(cached: CachedIngredient): boolean {
-  // If we have calories but ALL macros are 0, something is wrong
-  // (almost no food has exactly 0 protein, 0 carbs, AND 0 fat)
+  // If we have significant calories but carbs is exactly 0, it's likely a bug
+  // Very few foods with >50 cal/100g have exactly 0 carbs (pure fats/oils are exceptions)
+  // Pure fats have ~900 cal/100g and ~100g fat
+  const isPureFat = cached.fat_per_100g > 80 && cached.calories_per_100g > 800;
+
+  if (cached.calories_per_100g > 50 && cached.carbs_per_100g === 0 && !isPureFat) {
+    console.warn(`Cache validation failed for "${cached.ingredient_name}": calories=${cached.calories_per_100g} but carbs=0 (suspicious)`);
+    return false;
+  }
+
+  // If we have calories but ALL macros are 0, something is definitely wrong
   if (cached.calories_per_100g > 0 &&
       cached.protein_per_100g === 0 &&
       cached.carbs_per_100g === 0 &&
@@ -461,16 +485,15 @@ function isCacheDataValid(cached: CachedIngredient): boolean {
     return false;
   }
 
-  // Basic sanity check: calories should roughly match macro calculation
+  // Sanity check: calculated calories should be in reasonable range of stored calories
   // Calories = protein*4 + carbs*4 + fat*9
   const expectedCalories = (cached.protein_per_100g * 4) +
                           (cached.carbs_per_100g * 4) +
                           (cached.fat_per_100g * 9);
 
-  // Allow significant variance since some foods have fiber, alcohol, etc.
-  // But if expected is 0 and actual is high, something is wrong
-  if (expectedCalories === 0 && cached.calories_per_100g > 50) {
-    console.warn(`Cache validation failed for "${cached.ingredient_name}": calories ${cached.calories_per_100g} but calculated macros give 0`);
+  // If expected is very low but actual is high, something is wrong
+  if (expectedCalories < 20 && cached.calories_per_100g > 80) {
+    console.warn(`Cache validation failed for "${cached.ingredient_name}": calories=${cached.calories_per_100g} but macro-calculated=${expectedCalories}`);
     return false;
   }
 
