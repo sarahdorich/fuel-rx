@@ -5,13 +5,13 @@ export default function Home() {
     <div className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-primary-600">Coach Hill&apos;s FuelRx</h1>
-          <div className="space-x-4">
-            <Link href="/login" className="text-gray-600 hover:text-gray-900">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-3">
+          <h1 className="text-xl sm:text-2xl font-bold text-primary-600">Coach Hill&apos;s FuelRx</h1>
+          <div className="flex items-center gap-3 sm:gap-4">
+            <Link href="/login" className="text-gray-600 hover:text-gray-900 whitespace-nowrap">
               Log in
             </Link>
-            <Link href="/signup" className="btn-primary">
+            <Link href="/signup" className="btn-primary whitespace-nowrap">
               Get Started
             </Link>
           </div>

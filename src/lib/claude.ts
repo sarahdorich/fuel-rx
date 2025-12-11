@@ -17,7 +17,8 @@ export async function generateMealPlan(profile: UserProfile): Promise<{
   days: DayPlan[];
   grocery_list: Ingredient[];
 }> {
-  const dietaryPrefsText = profile.dietary_prefs
+  const dietaryPrefs = profile.dietary_prefs ?? ['no_restrictions'];
+  const dietaryPrefsText = dietaryPrefs
     .map(pref => DIETARY_LABELS[pref] || pref)
     .join(', ') || 'No restrictions';
 
