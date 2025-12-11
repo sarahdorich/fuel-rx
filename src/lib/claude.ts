@@ -48,7 +48,10 @@ function buildConsistencyInstructions(prefs: MealConsistencyPrefs): string {
   return instructions;
 }
 
-export async function generateMealPlan(profile: UserProfile): Promise<{
+export async function generateMealPlan(
+  profile: UserProfile,
+  recentMealNames?: string[]
+): Promise<{
   days: DayPlan[];
   grocery_list: Ingredient[];
 }> {
@@ -60,7 +63,12 @@ export async function generateMealPlan(profile: UserProfile): Promise<{
   const mealConsistencyPrefs = profile.meal_consistency_prefs ?? DEFAULT_MEAL_CONSISTENCY_PREFS;
   const consistencyInstructions = buildConsistencyInstructions(mealConsistencyPrefs);
 
-  const prompt = `You are a nutrition expert specializing in meal planning for CrossFit athletes. Generate a complete 7-day meal plan based on the following requirements:
+  // Build recent meals exclusion instruction if provided
+  const recentMealsInstruction = recentMealNames && recentMealNames.length > 0
+    ? `\n\n## IMPORTANT: Avoid Recently Used Meals\nAVOID these recently used meals and create entirely new and different meals: ${recentMealNames.join(', ')}`
+    : '';
+
+  const prompt = `You are a nutrition expert specializing in meal planning for CrossFit athletes. Generate a complete 7-day meal plan based on the following requirements:${recentMealsInstruction}
 
 ## User Profile
 - Daily Calorie Target: ${profile.target_calories} kcal
@@ -138,7 +146,7 @@ Meal types should be distributed appropriately based on ${profile.meals_per_day}
 
   const message = await anthropic.messages.create({
     model: 'claude-sonnet-4-20250514',
-    max_tokens: 16000,
+    max_tokens: 24000,
     messages: [
       {
         role: 'user',
