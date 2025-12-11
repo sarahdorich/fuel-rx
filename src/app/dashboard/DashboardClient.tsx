@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { DIETARY_PREFERENCE_LABELS } from '@/lib/types'
-import type { UserProfile, DietaryPreference } from '@/lib/types'
+import { DIETARY_PREFERENCE_LABELS, MEAL_TYPE_LABELS, DEFAULT_MEAL_CONSISTENCY_PREFS } from '@/lib/types'
+import type { UserProfile, DietaryPreference, MealType } from '@/lib/types'
 
 interface Props {
   profile: UserProfile | null
@@ -218,6 +218,28 @@ export default function DashboardClient({ profile, recentPlan }: Props) {
                 <div>
                   <p className="text-sm text-gray-500 mb-1">Max Prep Time</p>
                   <p className="font-medium">{profile.prep_time} minutes</p>
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-4">
+                  <p className="text-sm text-gray-500 mb-1">Meal Variety</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(Object.keys(MEAL_TYPE_LABELS) as MealType[]).map((mealType) => {
+                      const prefs = profile.meal_consistency_prefs ?? DEFAULT_MEAL_CONSISTENCY_PREFS;
+                      const isConsistent = prefs[mealType] === 'consistent';
+                      return (
+                        <span
+                          key={mealType}
+                          className={`px-3 py-1 rounded-full text-sm ${
+                            isConsistent
+                              ? 'bg-primary-100 text-primary-700'
+                              : 'bg-gray-100 text-gray-600'
+                          }`}
+                        >
+                          {MEAL_TYPE_LABELS[mealType]}: {isConsistent ? 'Same Daily' : 'Varied'}
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ) : (

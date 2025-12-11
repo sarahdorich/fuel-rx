@@ -9,6 +9,26 @@ export type PrepTime = 5 | 15 | 30 | 45 | 60;
 
 export type MealsPerDay = 3 | 4 | 5 | 6;
 
+export type MealType = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+export type MealConsistency = 'consistent' | 'varied';
+
+export type MealConsistencyPrefs = Record<MealType, MealConsistency>;
+
+export const DEFAULT_MEAL_CONSISTENCY_PREFS: MealConsistencyPrefs = {
+  breakfast: 'varied',
+  lunch: 'varied',
+  dinner: 'varied',
+  snack: 'varied',
+};
+
+export const MEAL_TYPE_LABELS: Record<MealType, string> = {
+  breakfast: 'Breakfast',
+  lunch: 'Lunch',
+  dinner: 'Dinner',
+  snack: 'Snack',
+};
+
 export interface UserProfile {
   id: string;
   email: string;
@@ -21,6 +41,7 @@ export interface UserProfile {
   dietary_prefs: DietaryPreference[];
   meals_per_day: MealsPerDay;
   prep_time: PrepTime;
+  meal_consistency_prefs: MealConsistencyPrefs;
   created_at: string;
   updated_at: string;
 }
@@ -74,6 +95,7 @@ export interface OnboardingData {
   dietary_prefs: DietaryPreference[];
   meals_per_day: MealsPerDay;
   prep_time: PrepTime;
+  meal_consistency_prefs: MealConsistencyPrefs;
 }
 
 export const DIETARY_PREFERENCE_LABELS: Record<DietaryPreference, string> = {
