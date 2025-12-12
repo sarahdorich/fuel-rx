@@ -48,7 +48,10 @@ function buildConsistencyInstructions(prefs: MealConsistencyPrefs): string {
   return instructions;
 }
 
-export async function generateMealPlan(profile: UserProfile): Promise<{
+export async function generateMealPlan(
+  profile: UserProfile,
+  recentMealNames?: string[]
+): Promise<{
   days: DayPlan[];
   grocery_list: Ingredient[];
 }> {
@@ -60,8 +63,12 @@ export async function generateMealPlan(profile: UserProfile): Promise<{
   const mealConsistencyPrefs = profile.meal_consistency_prefs ?? DEFAULT_MEAL_CONSISTENCY_PREFS;
   const consistencyInstructions = buildConsistencyInstructions(mealConsistencyPrefs);
 
-  const prompt = `You are a nutrition expert specializing in meal planning for CrossFit athletes. Generate a complete 7-day meal plan based on the following requirements:
+  const recentMealsExclusion = recentMealNames && recentMealNames.length > 0
+    ? `\n## IMPORTANT: Meal Variety Requirement\nAVOID these recently used meals from the user's last meal plan: ${recentMealNames.join(', ')}. Create entirely new and different meals to provide variety.\n`
+    : '';
 
+  const prompt = `You are a nutrition expert specializing in meal planning for CrossFit athletes. Generate a complete 7-day meal plan based on the following requirements:
+${recentMealsExclusion}
 ## User Profile
 - Daily Calorie Target: ${profile.target_calories} kcal
 - Daily Protein Target: ${profile.target_protein}g
@@ -76,10 +83,26 @@ ${profile.weight ? `- Weight: ${profile.weight} lbs` : ''}
 1. **ONLY recommend healthy, whole foods that are non-processed or minimally processed**
 2. NO ultra-processed foods, artificial ingredients, or packaged convenience foods
 3. Focus on: lean proteins, vegetables, fruits, whole grains, legumes, nuts, seeds, and healthy fats
-4. Each day's meals should hit the macro targets as closely as possible (within 5% variance)
-5. Recipes must be practical and achievable within the specified prep time
-6. IMPORTANT - Meal consistency preferences:
+4. Recipes must be practical and achievable within the specified prep time
+5. IMPORTANT - Meal consistency preferences:
 ${consistencyInstructions}
+
+## CRITICAL NUTRITION ACCURACY REQUIREMENTS
+- Use USDA nutritional database values as your reference for all calculations
+- Use standard serving sizes and be specific about measurements (e.g., "4 oz chicken breast" not "1 chicken breast")
+- When calculating macros, double-check that each meal's macros add up correctly using these standards:
+  - Protein: 4 calories per gram
+  - Carbohydrates: 4 calories per gram
+  - Fat: 9 calories per gram
+- Verify that calories = (protein × 4) + (carbs × 4) + (fat × 9) for each meal
+- Aim to get close to the daily targets (within 10-15% is acceptable):
+  - Daily calories: ~${profile.target_calories} kcal
+  - Daily protein: ~${profile.target_protein}g
+  - Daily carbs: ~${profile.target_carbs}g
+  - Daily fat: ~${profile.target_fat}g
+- IMPORTANT: Prioritize realistic, accurate nutrition data over hitting exact targets. Do NOT fabricate or round numbers to artificially match targets. It is better to be slightly off-target with accurate macros than to hit targets exactly with made-up numbers.
+- Daily totals should naturally vary between days based on the actual meals - do not force every day to have identical totals.
+- Double-check daily_totals by summing all meal macros for that day
 
 ## Response Format
 Return ONLY valid JSON with this exact structure (no markdown, no code blocks, just raw JSON):

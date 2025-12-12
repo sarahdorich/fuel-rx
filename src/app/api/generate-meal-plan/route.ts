@@ -23,9 +23,25 @@ export async function POST() {
     return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
   }
 
+  // Query the user's most recent meal plan to avoid repeating meals
+  const { data: recentPlan } = await supabase
+    .from('meal_plans')
+    .select('plan_data')
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  // Extract meal names from the recent plan (if exists)
+  let recentMealNames: string[] = []
+  if (recentPlan?.plan_data) {
+    const planData = recentPlan.plan_data as { day: string; meals: { name: string }[] }[]
+    recentMealNames = planData.flatMap(day => day.meals.map(meal => meal.name))
+  }
+
   try {
     // Generate meal plan using Claude
-    const mealPlanData = await generateMealPlan(profile as UserProfile)
+    const mealPlanData = await generateMealPlan(profile as UserProfile, recentMealNames)
 
     // Calculate week start date (next Monday)
     const today = new Date()
