@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { DayPlan, Meal, Ingredient, MealPreferenceType } from '@/lib/types'
+import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros } from '@/lib/types'
 
 interface Props {
   mealPlan: {
@@ -108,44 +108,49 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     setSavingTitle(false)
   }
 
-  const updateMealCalories = async (dayIndex: number, mealIndex: number, newCalories: number) => {
+  const updateMealMacros = async (dayIndex: number, mealIndex: number, newMacros: Macros) => {
     const updatedDays = [...mealPlan.days]
     const day = updatedDays[dayIndex]
     const meal = day.meals[mealIndex]
-    const oldCalories = meal.macros.calories
-    const calorieDiff = newCalories - oldCalories
 
-    // Update the meal's calories
-    meal.macros.calories = newCalories
+    // Update the meal's macros
+    meal.macros = { ...newMacros }
 
-    // Update daily totals
-    day.daily_totals.calories += calorieDiff
-
-    // Recalculate macros proportionally based on calorie change
-    // This is a simple proportional adjustment
-    if (oldCalories > 0) {
-      const ratio = newCalories / oldCalories
-      meal.macros.protein = Math.round(meal.macros.protein * ratio)
-      meal.macros.carbs = Math.round(meal.macros.carbs * ratio)
-      meal.macros.fat = Math.round(meal.macros.fat * ratio)
-
-      // Recalculate daily totals
-      day.daily_totals.protein = day.meals.reduce((sum, m) => sum + m.macros.protein, 0)
-      day.daily_totals.carbs = day.meals.reduce((sum, m) => sum + m.macros.carbs, 0)
-      day.daily_totals.fat = day.meals.reduce((sum, m) => sum + m.macros.fat, 0)
-    }
+    // Recalculate daily totals
+    day.daily_totals.calories = day.meals.reduce((sum, m) => sum + m.macros.calories, 0)
+    day.daily_totals.protein = day.meals.reduce((sum, m) => sum + m.macros.protein, 0)
+    day.daily_totals.carbs = day.meals.reduce((sum, m) => sum + m.macros.carbs, 0)
+    day.daily_totals.fat = day.meals.reduce((sum, m) => sum + m.macros.fat, 0)
 
     // Save to database
-    const { error } = await supabase
+    const { error: planError } = await supabase
       .from('meal_plans')
       .update({ plan_data: updatedDays })
       .eq('id', mealPlan.id)
 
-    if (!error) {
-      setMealPlan({ ...mealPlan, days: updatedDays })
+    if (planError) {
+      return false
     }
 
-    return !error
+    // Save to validated_meals_by_user for future meal plan generation
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase
+        .from('validated_meals_by_user')
+        .upsert({
+          user_id: user.id,
+          meal_name: meal.name,
+          calories: newMacros.calories,
+          protein: newMacros.protein,
+          carbs: newMacros.carbs,
+          fat: newMacros.fat,
+        }, {
+          onConflict: 'user_id,meal_name',
+        })
+    }
+
+    setMealPlan({ ...mealPlan, days: updatedDays })
+    return true
   }
 
   const toggleMealPreference = async (mealName: string, preference: MealPreferenceType) => {
@@ -370,7 +375,7 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                 preference={mealPreferences[meal.name]}
                 onLike={() => toggleMealPreference(meal.name, 'liked')}
                 onDislike={() => toggleMealPreference(meal.name, 'disliked')}
-                onCaloriesChange={(newCalories) => updateMealCalories(dayIndex, mealIndex, newCalories)}
+                onMacrosChange={(newMacros) => updateMealMacros(dayIndex, mealIndex, newMacros)}
               />
             )
           })}
@@ -387,7 +392,7 @@ function MealCard({
   preference,
   onLike,
   onDislike,
-  onCaloriesChange,
+  onMacrosChange,
 }: {
   meal: Meal
   isExpanded: boolean
@@ -395,11 +400,16 @@ function MealCard({
   preference?: MealPreferenceType
   onLike: () => void
   onDislike: () => void
-  onCaloriesChange: (calories: number) => Promise<boolean>
+  onMacrosChange: (macros: Macros) => Promise<boolean>
 }) {
-  const [isEditingCalories, setIsEditingCalories] = useState(false)
-  const [caloriesValue, setCaloriesValue] = useState(meal.macros.calories.toString())
-  const [savingCalories, setSavingCalories] = useState(false)
+  const [isEditingMacros, setIsEditingMacros] = useState(false)
+  const [macrosValue, setMacrosValue] = useState({
+    calories: meal.macros.calories.toString(),
+    protein: meal.macros.protein.toString(),
+    carbs: meal.macros.carbs.toString(),
+    fat: meal.macros.fat.toString(),
+  })
+  const [savingMacros, setSavingMacros] = useState(false)
 
   const mealTypeColors: Record<string, string> = {
     breakfast: 'bg-yellow-100 text-yellow-800',
@@ -408,23 +418,71 @@ function MealCard({
     snack: 'bg-purple-100 text-purple-800',
   }
 
-  const handleSaveCalories = async () => {
-    const newCalories = parseInt(caloriesValue, 10)
-    if (isNaN(newCalories) || newCalories <= 0) {
-      setCaloriesValue(meal.macros.calories.toString())
-      setIsEditingCalories(false)
+  const resetMacrosValue = () => {
+    setMacrosValue({
+      calories: meal.macros.calories.toString(),
+      protein: meal.macros.protein.toString(),
+      carbs: meal.macros.carbs.toString(),
+      fat: meal.macros.fat.toString(),
+    })
+  }
+
+  const handleSaveMacros = async () => {
+    const newMacros = {
+      calories: parseInt(macrosValue.calories, 10),
+      protein: parseInt(macrosValue.protein, 10),
+      carbs: parseInt(macrosValue.carbs, 10),
+      fat: parseInt(macrosValue.fat, 10),
+    }
+
+    // Validate all values
+    if (Object.values(newMacros).some(v => isNaN(v) || v < 0)) {
+      resetMacrosValue()
+      setIsEditingMacros(false)
       return
     }
 
-    setSavingCalories(true)
-    const success = await onCaloriesChange(newCalories)
+    setSavingMacros(true)
+    const success = await onMacrosChange(newMacros)
     if (success) {
-      setIsEditingCalories(false)
+      setIsEditingMacros(false)
     } else {
-      setCaloriesValue(meal.macros.calories.toString())
+      resetMacrosValue()
     }
-    setSavingCalories(false)
+    setSavingMacros(false)
   }
+
+  const MacroInput = ({
+    label,
+    value,
+    onChange,
+    color
+  }: {
+    label: string
+    value: string
+    onChange: (v: string) => void
+    color: string
+  }) => (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-16 px-2 py-1 border border-gray-300 rounded text-sm ${color}`}
+        min="0"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation()
+          if (e.key === 'Enter') handleSaveMacros()
+          if (e.key === 'Escape') {
+            resetMacrosValue()
+            setIsEditingMacros(false)
+          }
+        }}
+      />
+      <span className={`text-sm ${color}`}>{label}</span>
+    </div>
+  )
 
   return (
     <div className="card">
@@ -442,75 +500,81 @@ function MealCard({
             </span>
           </div>
           <h4 className="text-lg font-semibold text-gray-900">{meal.name}</h4>
-          <div className="flex flex-wrap gap-4 mt-2 text-sm">
-            {isEditingCalories ? (
-              <span
-                className="text-gray-600"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <input
-                  type="number"
-                  value={caloriesValue}
-                  onChange={(e) => setCaloriesValue(e.target.value)}
-                  className="w-20 px-2 py-1 border border-gray-300 rounded text-sm"
-                  min="1"
-                  autoFocus
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => {
-                    e.stopPropagation()
-                    if (e.key === 'Enter') handleSaveCalories()
-                    if (e.key === 'Escape') {
-                      setCaloriesValue(meal.macros.calories.toString())
-                      setIsEditingCalories(false)
-                    }
-                  }}
-                />
+          {isEditingMacros ? (
+            <div className="flex flex-wrap items-center gap-3 mt-2" onClick={(e) => e.stopPropagation()}>
+              <MacroInput
+                label="kcal"
+                value={macrosValue.calories}
+                onChange={(v) => setMacrosValue({ ...macrosValue, calories: v })}
+                color="text-gray-600"
+              />
+              <MacroInput
+                label="g protein"
+                value={macrosValue.protein}
+                onChange={(v) => setMacrosValue({ ...macrosValue, protein: v })}
+                color="text-blue-600"
+              />
+              <MacroInput
+                label="g carbs"
+                value={macrosValue.carbs}
+                onChange={(v) => setMacrosValue({ ...macrosValue, carbs: v })}
+                color="text-orange-600"
+              />
+              <MacroInput
+                label="g fat"
+                value={macrosValue.fat}
+                onChange={(v) => setMacrosValue({ ...macrosValue, fat: v })}
+                color="text-purple-600"
+              />
+              <div className="flex gap-1">
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    handleSaveCalories()
+                    handleSaveMacros()
                   }}
-                  disabled={savingCalories}
-                  className="ml-1 px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700 disabled:opacity-50"
+                  disabled={savingMacros}
+                  className="px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700 disabled:opacity-50"
                 >
-                  {savingCalories ? '...' : 'Save'}
+                  {savingMacros ? 'Saving...' : 'Save'}
                 </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    setCaloriesValue(meal.macros.calories.toString())
-                    setIsEditingCalories(false)
+                    resetMacrosValue()
+                    setIsEditingMacros(false)
                   }}
-                  className="ml-1 px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300"
+                  className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300"
                 >
                   Cancel
                 </button>
-              </span>
-            ) : (
-              <span
-                className="text-gray-600 cursor-pointer hover:text-gray-800 group"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setIsEditingCalories(true)
-                }}
-                title="Click to edit calories"
-              >
+              </div>
+            </div>
+          ) : (
+            <div
+              className="flex flex-wrap gap-4 mt-2 text-sm cursor-pointer group"
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsEditingMacros(true)
+              }}
+              title="Click to edit macros"
+            >
+              <span className="text-gray-600">
                 <span className="font-medium">{meal.macros.calories}</span> kcal
-                <svg className="w-3 h-3 inline ml-1 opacity-0 group-hover:opacity-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                </svg>
               </span>
-            )}
-            <span className="text-blue-600">
-              <span className="font-medium">{meal.macros.protein}g</span> protein
-            </span>
-            <span className="text-orange-600">
-              <span className="font-medium">{meal.macros.carbs}g</span> carbs
-            </span>
-            <span className="text-purple-600">
-              <span className="font-medium">{meal.macros.fat}g</span> fat
-            </span>
-          </div>
+              <span className="text-blue-600">
+                <span className="font-medium">{meal.macros.protein}g</span> protein
+              </span>
+              <span className="text-orange-600">
+                <span className="font-medium">{meal.macros.carbs}g</span> carbs
+              </span>
+              <span className="text-purple-600">
+                <span className="font-medium">{meal.macros.fat}g</span> fat
+              </span>
+              <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+            </div>
+          )}
         </button>
 
         {/* Like/Dislike and Expand buttons */}

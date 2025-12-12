@@ -126,3 +126,15 @@ export const PREP_TIME_OPTIONS: { value: PrepTime; label: string }[] = [
 ];
 
 export const MEALS_PER_DAY_OPTIONS: MealsPerDay[] = [3, 4, 5, 6];
+
+export interface ValidatedMeal {
+  id: string;
+  user_id: string;
+  meal_name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  created_at: string;
+  updated_at: string;
+}
