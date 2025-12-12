@@ -31,6 +31,7 @@ export default async function MealPlanPage({ params }: Props) {
       mealPlan={{
         id: mealPlan.id,
         week_start_date: mealPlan.week_start_date,
+        title: mealPlan.title,
         days: mealPlan.plan_data,
         grocery_list: mealPlan.grocery_list,
         is_favorite: mealPlan.is_favorite,

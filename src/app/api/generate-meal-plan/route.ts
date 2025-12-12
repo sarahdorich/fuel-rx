@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateMealPlan } from '@/lib/claude'
-import type { UserProfile } from '@/lib/types'
+import type { UserProfile, ValidatedMeal } from '@/lib/types'
 
 export async function POST() {
   const supabase = await createClient()
@@ -39,9 +39,34 @@ export async function POST() {
     recentMealNames = planData.flatMap(day => day.meals.map(meal => meal.name))
   }
 
+  // Fetch user's meal preferences (likes/dislikes)
+  const { data: mealPrefsData } = await supabase
+    .from('meal_preferences')
+    .select('meal_name, preference')
+    .eq('user_id', user.id)
+
+  const mealPreferences = {
+    liked: mealPrefsData?.filter(p => p.preference === 'liked').map(p => p.meal_name) || [],
+    disliked: mealPrefsData?.filter(p => p.preference === 'disliked').map(p => p.meal_name) || [],
+  }
+
+  // Fetch user's validated meals (user-corrected calorie/macro data)
+  const { data: validatedMealsData } = await supabase
+    .from('validated_meals_by_user')
+    .select('meal_name, calories, protein, carbs, fat')
+    .eq('user_id', user.id)
+
+  const validatedMeals = validatedMealsData?.map(m => ({
+    meal_name: m.meal_name,
+    calories: m.calories,
+    protein: m.protein,
+    carbs: m.carbs,
+    fat: m.fat,
+  })) || []
+
   try {
     // Generate meal plan using Claude
-    const mealPlanData = await generateMealPlan(profile as UserProfile, recentMealNames)
+    const mealPlanData = await generateMealPlan(profile as UserProfile, recentMealNames, mealPreferences, validatedMeals)
 
     // Calculate week start date (next Monday)
     const today = new Date()

@@ -1,20 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { DayPlan, Meal, Ingredient } from '@/lib/types'
+import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros } from '@/lib/types'
 
 interface Props {
   mealPlan: {
     id: string
     week_start_date: string
+    title: string | null
     days: DayPlan[]
     grocery_list: Ingredient[]
     is_favorite: boolean
     created_at: string
   }
+}
+
+interface MealPreferencesMap {
+  [mealName: string]: MealPreferenceType
 }
 
 const DAY_LABELS: Record<string, string> = {
@@ -29,13 +34,44 @@ const DAY_LABELS: Record<string, string> = {
 
 const MEAL_TYPE_ORDER = ['breakfast', 'lunch', 'dinner', 'snack']
 
-export default function MealPlanClient({ mealPlan }: Props) {
+export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   const router = useRouter()
   const supabase = createClient()
+  const [mealPlan, setMealPlan] = useState(initialMealPlan)
   const [selectedDay, setSelectedDay] = useState<string>(mealPlan.days[0]?.day || 'monday')
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null)
   const [isFavorite, setIsFavorite] = useState(mealPlan.is_favorite)
   const [togglingFavorite, setTogglingFavorite] = useState(false)
+
+  // Title editing state
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [titleValue, setTitleValue] = useState(mealPlan.title || '')
+  const [savingTitle, setSavingTitle] = useState(false)
+
+  // Meal preferences state
+  const [mealPreferences, setMealPreferences] = useState<MealPreferencesMap>({})
+
+  // Load meal preferences on mount
+  useEffect(() => {
+    const loadMealPreferences = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data } = await supabase
+        .from('meal_preferences')
+        .select('meal_name, preference')
+        .eq('user_id', user.id)
+
+      if (data) {
+        const prefsMap: MealPreferencesMap = {}
+        data.forEach(pref => {
+          prefsMap[pref.meal_name] = pref.preference as MealPreferenceType
+        })
+        setMealPreferences(prefsMap)
+      }
+    }
+    loadMealPreferences()
+  }, [supabase])
 
   const currentDayPlan = mealPlan.days.find(d => d.day === selectedDay)
 
@@ -56,6 +92,102 @@ export default function MealPlanClient({ mealPlan }: Props) {
       setIsFavorite(newValue)
     }
     setTogglingFavorite(false)
+  }
+
+  const saveTitle = async () => {
+    setSavingTitle(true)
+    const { error } = await supabase
+      .from('meal_plans')
+      .update({ title: titleValue || null })
+      .eq('id', mealPlan.id)
+
+    if (!error) {
+      setMealPlan({ ...mealPlan, title: titleValue || null })
+      setIsEditingTitle(false)
+    }
+    setSavingTitle(false)
+  }
+
+  const updateMealMacros = async (dayIndex: number, mealIndex: number, newMacros: Macros) => {
+    const updatedDays = [...mealPlan.days]
+    const day = updatedDays[dayIndex]
+    const meal = day.meals[mealIndex]
+
+    // Update the meal's macros
+    meal.macros = { ...newMacros }
+
+    // Recalculate daily totals
+    day.daily_totals.calories = day.meals.reduce((sum, m) => sum + m.macros.calories, 0)
+    day.daily_totals.protein = day.meals.reduce((sum, m) => sum + m.macros.protein, 0)
+    day.daily_totals.carbs = day.meals.reduce((sum, m) => sum + m.macros.carbs, 0)
+    day.daily_totals.fat = day.meals.reduce((sum, m) => sum + m.macros.fat, 0)
+
+    // Save to database
+    const { error: planError } = await supabase
+      .from('meal_plans')
+      .update({ plan_data: updatedDays })
+      .eq('id', mealPlan.id)
+
+    if (planError) {
+      return false
+    }
+
+    // Save to validated_meals_by_user for future meal plan generation
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase
+        .from('validated_meals_by_user')
+        .upsert({
+          user_id: user.id,
+          meal_name: meal.name,
+          calories: newMacros.calories,
+          protein: newMacros.protein,
+          carbs: newMacros.carbs,
+          fat: newMacros.fat,
+        }, {
+          onConflict: 'user_id,meal_name',
+        })
+    }
+
+    setMealPlan({ ...mealPlan, days: updatedDays })
+    return true
+  }
+
+  const toggleMealPreference = async (mealName: string, preference: MealPreferenceType) => {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const currentPref = mealPreferences[mealName]
+
+    if (currentPref === preference) {
+      // Remove preference if clicking the same button
+      const { error } = await supabase
+        .from('meal_preferences')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('meal_name', mealName)
+
+      if (!error) {
+        const newPrefs = { ...mealPreferences }
+        delete newPrefs[mealName]
+        setMealPreferences(newPrefs)
+      }
+    } else {
+      // Upsert preference
+      const { error } = await supabase
+        .from('meal_preferences')
+        .upsert({
+          user_id: user.id,
+          meal_name: mealName,
+          preference: preference,
+        }, {
+          onConflict: 'user_id,meal_name',
+        })
+
+      if (!error) {
+        setMealPreferences({ ...mealPreferences, [mealName]: preference })
+      }
+    }
   }
 
   return (
@@ -81,9 +213,56 @@ export default function MealPlanClient({ mealPlan }: Props) {
         {/* Plan header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Meal Plan
-            </h1>
+            {isEditingTitle ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={titleValue}
+                  onChange={(e) => setTitleValue(e.target.value)}
+                  placeholder="Enter meal plan title..."
+                  className="input-field text-xl font-bold"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') saveTitle()
+                    if (e.key === 'Escape') {
+                      setTitleValue(mealPlan.title || '')
+                      setIsEditingTitle(false)
+                    }
+                  }}
+                />
+                <button
+                  onClick={saveTitle}
+                  disabled={savingTitle}
+                  className="px-3 py-1 bg-primary-600 text-white rounded-lg text-sm hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {savingTitle ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={() => {
+                    setTitleValue(mealPlan.title || '')
+                    setIsEditingTitle(false)
+                  }}
+                  className="px-3 py-1 bg-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-gray-900">
+                  {mealPlan.title || 'Meal Plan'}
+                </h1>
+                <button
+                  onClick={() => setIsEditingTitle(true)}
+                  className="p-1 text-gray-400 hover:text-gray-600"
+                  title="Edit title"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                  </svg>
+                </button>
+              </div>
+            )}
             <p className="text-gray-600">
               Week of {new Date(mealPlan.week_start_date).toLocaleDateString('en-US', {
                 month: 'long',
@@ -180,18 +359,26 @@ export default function MealPlanClient({ mealPlan }: Props) {
 
         {/* Meals */}
         <div className="space-y-4">
-          {sortedMeals.map((meal, index) => (
-            <MealCard
-              key={`${meal.name}-${index}`}
-              meal={meal}
-              isExpanded={expandedMeal === `${meal.name}-${index}`}
-              onToggle={() =>
-                setExpandedMeal(
-                  expandedMeal === `${meal.name}-${index}` ? null : `${meal.name}-${index}`
-                )
-              }
-            />
-          ))}
+          {sortedMeals.map((meal, index) => {
+            const dayIndex = mealPlan.days.findIndex(d => d.day === selectedDay)
+            const mealIndex = currentDayPlan?.meals.findIndex(m => m === meal) ?? index
+            return (
+              <MealCard
+                key={`${meal.name}-${index}`}
+                meal={meal}
+                isExpanded={expandedMeal === `${meal.name}-${index}`}
+                onToggle={() =>
+                  setExpandedMeal(
+                    expandedMeal === `${meal.name}-${index}` ? null : `${meal.name}-${index}`
+                  )
+                }
+                preference={mealPreferences[meal.name]}
+                onLike={() => toggleMealPreference(meal.name, 'liked')}
+                onDislike={() => toggleMealPreference(meal.name, 'disliked')}
+                onMacrosChange={(newMacros) => updateMealMacros(dayIndex, mealIndex, newMacros)}
+              />
+            )
+          })}
         </div>
       </main>
     </div>
@@ -202,11 +389,28 @@ function MealCard({
   meal,
   isExpanded,
   onToggle,
+  preference,
+  onLike,
+  onDislike,
+  onMacrosChange,
 }: {
   meal: Meal
   isExpanded: boolean
   onToggle: () => void
+  preference?: MealPreferenceType
+  onLike: () => void
+  onDislike: () => void
+  onMacrosChange: (macros: Macros) => Promise<boolean>
 }) {
+  const [isEditingMacros, setIsEditingMacros] = useState(false)
+  const [macrosValue, setMacrosValue] = useState({
+    calories: meal.macros.calories.toString(),
+    protein: meal.macros.protein.toString(),
+    carbs: meal.macros.carbs.toString(),
+    fat: meal.macros.fat.toString(),
+  })
+  const [savingMacros, setSavingMacros] = useState(false)
+
   const mealTypeColors: Record<string, string> = {
     breakfast: 'bg-yellow-100 text-yellow-800',
     lunch: 'bg-teal-100 text-teal-800',
@@ -214,24 +418,146 @@ function MealCard({
     snack: 'bg-purple-100 text-purple-800',
   }
 
+  const resetMacrosValue = () => {
+    setMacrosValue({
+      calories: meal.macros.calories.toString(),
+      protein: meal.macros.protein.toString(),
+      carbs: meal.macros.carbs.toString(),
+      fat: meal.macros.fat.toString(),
+    })
+  }
+
+  const handleSaveMacros = async () => {
+    const newMacros = {
+      calories: parseInt(macrosValue.calories, 10),
+      protein: parseInt(macrosValue.protein, 10),
+      carbs: parseInt(macrosValue.carbs, 10),
+      fat: parseInt(macrosValue.fat, 10),
+    }
+
+    // Validate all values
+    if (Object.values(newMacros).some(v => isNaN(v) || v < 0)) {
+      resetMacrosValue()
+      setIsEditingMacros(false)
+      return
+    }
+
+    setSavingMacros(true)
+    const success = await onMacrosChange(newMacros)
+    if (success) {
+      setIsEditingMacros(false)
+    } else {
+      resetMacrosValue()
+    }
+    setSavingMacros(false)
+  }
+
+  const MacroInput = ({
+    label,
+    value,
+    onChange,
+    color
+  }: {
+    label: string
+    value: string
+    onChange: (v: string) => void
+    color: string
+  }) => (
+    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <input
+        type="number"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-16 px-2 py-1 border border-gray-300 rounded text-sm ${color}`}
+        min="0"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation()
+          if (e.key === 'Enter') handleSaveMacros()
+          if (e.key === 'Escape') {
+            resetMacrosValue()
+            setIsEditingMacros(false)
+          }
+        }}
+      />
+      <span className={`text-sm ${color}`}>{label}</span>
+    </div>
+  )
+
   return (
     <div className="card">
-      <button
-        onClick={onToggle}
-        className="w-full text-left"
-      >
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
-              <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${mealTypeColors[meal.type]}`}>
-                {meal.type}
-              </span>
-              <span className="text-sm text-gray-500">
-                {meal.prep_time_minutes} min prep
-              </span>
+      <div className="flex items-start justify-between">
+        <button
+          onClick={onToggle}
+          className="flex-1 text-left"
+        >
+          <div className="flex items-center gap-3 mb-2">
+            <span className={`px-2 py-1 rounded text-xs font-medium capitalize ${mealTypeColors[meal.type]}`}>
+              {meal.type}
+            </span>
+            <span className="text-sm text-gray-500">
+              {meal.prep_time_minutes} min prep
+            </span>
+          </div>
+          <h4 className="text-lg font-semibold text-gray-900">{meal.name}</h4>
+          {isEditingMacros ? (
+            <div className="flex flex-wrap items-center gap-3 mt-2" onClick={(e) => e.stopPropagation()}>
+              <MacroInput
+                label="kcal"
+                value={macrosValue.calories}
+                onChange={(v) => setMacrosValue({ ...macrosValue, calories: v })}
+                color="text-gray-600"
+              />
+              <MacroInput
+                label="g protein"
+                value={macrosValue.protein}
+                onChange={(v) => setMacrosValue({ ...macrosValue, protein: v })}
+                color="text-blue-600"
+              />
+              <MacroInput
+                label="g carbs"
+                value={macrosValue.carbs}
+                onChange={(v) => setMacrosValue({ ...macrosValue, carbs: v })}
+                color="text-orange-600"
+              />
+              <MacroInput
+                label="g fat"
+                value={macrosValue.fat}
+                onChange={(v) => setMacrosValue({ ...macrosValue, fat: v })}
+                color="text-purple-600"
+              />
+              <div className="flex gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleSaveMacros()
+                  }}
+                  disabled={savingMacros}
+                  className="px-2 py-1 bg-primary-600 text-white rounded text-xs hover:bg-primary-700 disabled:opacity-50"
+                >
+                  {savingMacros ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    resetMacrosValue()
+                    setIsEditingMacros(false)
+                  }}
+                  className="px-2 py-1 bg-gray-200 text-gray-700 rounded text-xs hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-            <h4 className="text-lg font-semibold text-gray-900">{meal.name}</h4>
-            <div className="flex gap-4 mt-2 text-sm">
+          ) : (
+            <div
+              className="flex flex-wrap gap-4 mt-2 text-sm cursor-pointer group"
+              onClick={(e) => {
+                e.stopPropagation()
+                setIsEditingMacros(true)
+              }}
+              title="Click to edit macros"
+            >
               <span className="text-gray-600">
                 <span className="font-medium">{meal.macros.calories}</span> kcal
               </span>
@@ -244,18 +570,62 @@ function MealCard({
               <span className="text-purple-600">
                 <span className="font-medium">{meal.macros.fat}g</span> fat
               </span>
+              <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
             </div>
-          </div>
-          <svg
-            className={`w-6 h-6 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
+          )}
+        </button>
+
+        {/* Like/Dislike and Expand buttons */}
+        <div className="flex items-center gap-2 ml-4">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onLike()
+            }}
+            className={`p-2 rounded-full transition-colors ${
+              preference === 'liked'
+                ? 'bg-green-100 text-green-600'
+                : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+            }`}
+            title="Like this meal"
           >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
+            <svg className="w-5 h-5" fill={preference === 'liked' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+            </svg>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDislike()
+            }}
+            className={`p-2 rounded-full transition-colors ${
+              preference === 'disliked'
+                ? 'bg-red-100 text-red-600'
+                : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+            }`}
+            title="Dislike this meal"
+          >
+            <svg className="w-5 h-5" fill={preference === 'disliked' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v2a2 2 0 002 2h.095c.5 0 .905-.405.905-.905 0-.714.211-1.412.608-2.006L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
+            </svg>
+          </button>
+          <button
+            onClick={onToggle}
+            className="p-2"
+          >
+            <svg
+              className={`w-6 h-6 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
         </div>
-      </button>
+      </div>
 
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-gray-200">

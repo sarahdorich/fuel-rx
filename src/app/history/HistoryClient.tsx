@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/client'
 interface MealPlanSummary {
   id: string
   week_start_date: string
+  title: string | null
   is_favorite: boolean
   created_at: string
 }
@@ -107,11 +108,11 @@ export default function HistoryClient({ mealPlans: initialPlans }: Props) {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <h3 className="text-lg font-semibold text-gray-900">
-                      Week of {new Date(plan.week_start_date).toLocaleDateString('en-US', {
+                      {plan.title || `Week of ${new Date(plan.week_start_date).toLocaleDateString('en-US', {
                         month: 'long',
                         day: 'numeric',
                         year: 'numeric',
-                      })}
+                      })}`}
                     </h3>
                     {plan.is_favorite && (
                       <svg
@@ -123,7 +124,11 @@ export default function HistoryClient({ mealPlans: initialPlans }: Props) {
                     )}
                   </div>
                   <p className="text-sm text-gray-500">
-                    Created {new Date(plan.created_at).toLocaleDateString()}
+                    Week of {new Date(plan.week_start_date).toLocaleDateString('en-US', {
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })} &middot; Created {new Date(plan.created_at).toLocaleDateString()}
                   </p>
                 </div>
 

@@ -48,9 +48,19 @@ function buildConsistencyInstructions(prefs: MealConsistencyPrefs): string {
   return instructions;
 }
 
+interface ValidatedMealMacros {
+  meal_name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
 export async function generateMealPlan(
   profile: UserProfile,
-  recentMealNames?: string[]
+  recentMealNames?: string[],
+  mealPreferences?: { liked: string[]; disliked: string[] },
+  validatedMeals?: ValidatedMealMacros[]
 ): Promise<{
   days: DayPlan[];
   grocery_list: Ingredient[];
@@ -67,8 +77,34 @@ export async function generateMealPlan(
     ? `\n## IMPORTANT: Meal Variety Requirement\nAVOID these recently used meals from the user's last meal plan: ${recentMealNames.join(', ')}. Create entirely new and different meals to provide variety.\n`
     : '';
 
+  let mealPreferencesSection = '';
+  if (mealPreferences) {
+    const parts: string[] = [];
+    if (mealPreferences.liked.length > 0) {
+      parts.push(`**Meals the user LIKES** (try to include similar meals or these exact meals): ${mealPreferences.liked.join(', ')}`);
+    }
+    if (mealPreferences.disliked.length > 0) {
+      parts.push(`**Meals the user DISLIKES** (AVOID these meals and similar ones): ${mealPreferences.disliked.join(', ')}`);
+    }
+    if (parts.length > 0) {
+      mealPreferencesSection = `\n## User Meal Preferences\n${parts.join('\n')}\n`;
+    }
+  }
+
+  let validatedMealsSection = '';
+  if (validatedMeals && validatedMeals.length > 0) {
+    const mealsList = validatedMeals.map(m =>
+      `- "${m.meal_name}": ${m.calories} kcal, ${m.protein}g protein, ${m.carbs}g carbs, ${m.fat}g fat`
+    ).join('\n');
+    validatedMealsSection = `
+## User-Validated Meal Nutrition Data
+The user has corrected the nutrition data for the following meals. When generating these meals or similar meals, use these EXACT macro values as a reference. These are user-verified values that should take precedence over standard estimates:
+${mealsList}
+`;
+  }
+
   const prompt = `You are a nutrition expert specializing in meal planning for CrossFit athletes. Generate a complete 7-day meal plan based on the following requirements:
-${recentMealsExclusion}
+${recentMealsExclusion}${mealPreferencesSection}${validatedMealsSection}
 ## User Profile
 - Daily Calorie Target: ${profile.target_calories} kcal
 - Daily Protein Target: ${profile.target_protein}g
