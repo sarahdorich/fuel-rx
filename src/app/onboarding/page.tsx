@@ -258,7 +258,7 @@ export default function OnboardingPage() {
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
                   <strong>Tip:</strong> Most CrossFit athletes need 1.6-2.2g of protein per kg of body weight.
-                  Carbs fuel your WODs, and healthy fats support brain and hormone function.
+                  Carbs fuel your WODs, and healthy fats support brain + hormone function.
                 </p>
               </div>
             </div>
@@ -393,8 +393,8 @@ export default function OnboardingPage() {
 
               <div className="bg-primary-50 p-4 rounded-lg">
                 <p className="text-sm text-primary-800">
-                  <strong>Tip:</strong> Keeping breakfast and snacks consistent is a popular choice
-                  for athletes who want variety at dinner but easy meal prep for busy mornings.
+                  <strong>Tip:</strong> Keeping breakfast, lunch and snacks consistent is a popular choice
+                  for athletes who want variety at dinner but easy meal prep for busy days.
                 </p>
               </div>
             </div>

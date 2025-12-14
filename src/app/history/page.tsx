@@ -26,6 +26,9 @@ export default async function HistoryPage() {
             Coach Hill&apos;s FuelRx
           </Link>
           <div className="flex items-center gap-4">
+            <Link href="/custom-meals" className="text-gray-600 hover:text-gray-900">
+              My Meals
+            </Link>
             <Link href="/dashboard" className="text-gray-600 hover:text-gray-900">
               Dashboard
             </Link>
