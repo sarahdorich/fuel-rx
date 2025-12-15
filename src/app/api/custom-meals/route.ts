@@ -86,6 +86,34 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Failed to save custom meal' }, { status: 500 })
     }
 
+    // If sharing and user has social feed enabled, post to social feed
+    if (body.share_with_community) {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('social_feed_enabled')
+        .eq('id', user.id)
+        .single()
+
+      if (profile?.social_feed_enabled) {
+        await supabase.from('social_feed_posts').upsert({
+          user_id: user.id,
+          source_type: 'custom_meal',
+          source_meal_id: savedMeal.id,
+          meal_name: savedMeal.meal_name,
+          calories: savedMeal.calories,
+          protein: savedMeal.protein,
+          carbs: savedMeal.carbs,
+          fat: savedMeal.fat,
+          image_url: savedMeal.image_url,
+          prep_time: savedMeal.prep_time,
+          ingredients: savedMeal.ingredients,
+        }, {
+          onConflict: 'user_id,source_type,source_meal_id',
+          ignoreDuplicates: false,
+        })
+      }
+    }
+
     return NextResponse.json(savedMeal)
   } catch (error) {
     console.error('Error creating custom meal:', error)
@@ -191,6 +219,41 @@ export async function PUT(request: Request) {
     if (updateError) {
       console.error('Error updating custom meal:', updateError)
       return NextResponse.json({ error: 'Failed to update custom meal' }, { status: 500 })
+    }
+
+    // Handle social feed post based on sharing setting
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('social_feed_enabled')
+      .eq('id', user.id)
+      .single()
+
+    if (body.share_with_community && profile?.social_feed_enabled) {
+      // Create or update feed post
+      await supabase.from('social_feed_posts').upsert({
+        user_id: user.id,
+        source_type: 'custom_meal',
+        source_meal_id: updatedMeal.id,
+        meal_name: updatedMeal.meal_name,
+        calories: updatedMeal.calories,
+        protein: updatedMeal.protein,
+        carbs: updatedMeal.carbs,
+        fat: updatedMeal.fat,
+        image_url: updatedMeal.image_url,
+        prep_time: updatedMeal.prep_time,
+        ingredients: updatedMeal.ingredients,
+      }, {
+        onConflict: 'user_id,source_type,source_meal_id',
+        ignoreDuplicates: false,
+      })
+    } else {
+      // Remove from feed if sharing disabled
+      await supabase
+        .from('social_feed_posts')
+        .delete()
+        .eq('user_id', user.id)
+        .eq('source_type', 'custom_meal')
+        .eq('source_meal_id', updatedMeal.id)
     }
 
     return NextResponse.json(updatedMeal)

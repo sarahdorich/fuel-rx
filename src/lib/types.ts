@@ -42,6 +42,8 @@ export interface UserProfile {
   meals_per_day: MealsPerDay;
   prep_time: PrepTime;
   meal_consistency_prefs: MealConsistencyPrefs;
+  social_feed_enabled: boolean;
+  display_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -161,4 +163,60 @@ export interface ValidatedMeal {
   prep_time: CustomMealPrepTime | null;
   created_at: string;
   updated_at: string;
+}
+
+// Social Feed Types
+
+export type SocialFeedSourceType = 'custom_meal' | 'favorited_meal';
+
+export interface SocialFeedPost {
+  id: string;
+  user_id: string;
+  source_type: SocialFeedSourceType;
+  source_meal_id: string | null;
+  source_meal_plan_id: string | null;
+  meal_name: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  image_url: string | null;
+  prep_time: CustomMealPrepTime | null;
+  ingredients: ValidatedMealIngredient[] | null;
+  instructions: string[] | null;
+  meal_type: MealType | null;
+  created_at: string;
+  // Joined fields from queries
+  author?: {
+    id: string;
+    display_name: string | null;
+    name: string | null;
+  };
+  is_saved?: boolean;
+}
+
+export interface UserFollow {
+  id: string;
+  follower_id: string;
+  following_id: string;
+  created_at: string;
+}
+
+export interface SavedCommunityMeal {
+  id: string;
+  user_id: string;
+  source_post_id: string;
+  original_author_id: string;
+  created_at: string;
+}
+
+export interface SocialUser {
+  id: string;
+  display_name: string | null;
+  name: string | null;
+  social_feed_enabled: boolean;
+  is_following?: boolean;
+  follower_count?: number;
+  following_count?: number;
+  post_count?: number;
 }

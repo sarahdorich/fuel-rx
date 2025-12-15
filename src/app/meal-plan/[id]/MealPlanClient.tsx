@@ -83,13 +83,18 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     setTogglingFavorite(true)
     const newValue = !isFavorite
 
-    const { error } = await supabase
-      .from('meal_plans')
-      .update({ is_favorite: newValue })
-      .eq('id', mealPlan.id)
+    try {
+      const response = await fetch(`/api/meal-plans/${mealPlan.id}/favorite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_favorite: newValue }),
+      })
 
-    if (!error) {
-      setIsFavorite(newValue)
+      if (response.ok) {
+        setIsFavorite(newValue)
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error)
     }
     setTogglingFavorite(false)
   }
