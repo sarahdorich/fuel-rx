@@ -462,27 +462,39 @@ function MealCard({
     value: string
     onChange: (v: string) => void
     color: string
-  }) => (
-    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-      <input
-        type="number"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`w-16 px-2 py-1 border border-gray-300 rounded text-sm ${color}`}
-        min="0"
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          e.stopPropagation()
-          if (e.key === 'Enter') handleSaveMacros()
-          if (e.key === 'Escape') {
-            resetMacrosValue()
-            setIsEditingMacros(false)
-          }
-        }}
-      />
-      <span className={`text-sm ${color}`}>{label}</span>
-    </div>
-  )
+  }) => {
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      const rawValue = e.target.value
+      // Allow empty or digits only
+      if (rawValue === '' || /^\d*$/.test(rawValue)) {
+        onChange(rawValue)
+      }
+    }
+
+    return (
+      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="text"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          value={value}
+          onChange={handleInputChange}
+          className={`w-16 px-2 py-1 border border-gray-300 rounded text-sm ${color}`}
+          onClick={(e) => e.stopPropagation()}
+          onFocus={(e) => e.target.select()}
+          onKeyDown={(e) => {
+            e.stopPropagation()
+            if (e.key === 'Enter') handleSaveMacros()
+            if (e.key === 'Escape') {
+              resetMacrosValue()
+              setIsEditingMacros(false)
+            }
+          }}
+        />
+        <span className={`text-sm ${color}`}>{label}</span>
+      </div>
+    )
+  }
 
   return (
     <div className="card">

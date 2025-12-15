@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import type { ValidatedMeal, ValidatedMealIngredient } from '@/lib/types'
+import NumericInput from '@/components/NumericInput'
 
 interface Props {
   initialMeals: ValidatedMeal[]
@@ -243,40 +244,36 @@ export default function CustomMealsClient({ initialMeals }: Props) {
                   <div className="grid grid-cols-4 gap-3">
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Calories *</label>
-                      <input
-                        type="number"
-                        value={ingredient.calories || ''}
-                        onChange={(e) => updateIngredient(index, 'calories', Number(e.target.value))}
+                      <NumericInput
+                        value={ingredient.calories}
+                        onChange={(val) => updateIngredient(index, 'calories', val)}
                         min={0}
                         className="input text-sm"
                       />
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Protein (g) *</label>
-                      <input
-                        type="number"
-                        value={ingredient.protein || ''}
-                        onChange={(e) => updateIngredient(index, 'protein', Number(e.target.value))}
+                      <NumericInput
+                        value={ingredient.protein}
+                        onChange={(val) => updateIngredient(index, 'protein', val)}
                         min={0}
                         className="input text-sm"
                       />
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Carbs (g) *</label>
-                      <input
-                        type="number"
-                        value={ingredient.carbs || ''}
-                        onChange={(e) => updateIngredient(index, 'carbs', Number(e.target.value))}
+                      <NumericInput
+                        value={ingredient.carbs}
+                        onChange={(val) => updateIngredient(index, 'carbs', val)}
                         min={0}
                         className="input text-sm"
                       />
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Fat (g) *</label>
-                      <input
-                        type="number"
-                        value={ingredient.fat || ''}
-                        onChange={(e) => updateIngredient(index, 'fat', Number(e.target.value))}
+                      <NumericInput
+                        value={ingredient.fat}
+                        onChange={(val) => updateIngredient(index, 'fat', val)}
                         min={0}
                         className="input text-sm"
                       />

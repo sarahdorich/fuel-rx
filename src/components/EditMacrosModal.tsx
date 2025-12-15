@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import NumericInput from './NumericInput'
 
 interface Props {
   isOpen: boolean
@@ -84,10 +85,9 @@ export default function EditMacrosModal({ isOpen, onClose, currentValues, onSave
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Protein (g)
             </label>
-            <input
-              type="number"
+            <NumericInput
               value={protein}
-              onChange={(e) => setProtein(Number(e.target.value))}
+              onChange={setProtein}
               min={0}
               max={500}
               className="input"
@@ -98,10 +98,9 @@ export default function EditMacrosModal({ isOpen, onClose, currentValues, onSave
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Carbs (g)
             </label>
-            <input
-              type="number"
+            <NumericInput
               value={carbs}
-              onChange={(e) => setCarbs(Number(e.target.value))}
+              onChange={setCarbs}
               min={0}
               max={800}
               className="input"
@@ -112,10 +111,9 @@ export default function EditMacrosModal({ isOpen, onClose, currentValues, onSave
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Fat (g)
             </label>
-            <input
-              type="number"
+            <NumericInput
               value={fat}
-              onChange={(e) => setFat(Number(e.target.value))}
+              onChange={setFat}
               min={0}
               max={300}
               className="input"

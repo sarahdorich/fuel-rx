@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { DietaryPreference, PrepTime, MealsPerDay, OnboardingData, MealType, MealConsistency } from '@/lib/types'
 import { DIETARY_PREFERENCE_LABELS, PREP_TIME_OPTIONS, MEALS_PER_DAY_OPTIONS, DEFAULT_MEAL_CONSISTENCY_PREFS, MEAL_TYPE_LABELS } from '@/lib/types'
+import NumericInput from '@/components/NumericInput'
 
 const STEPS = ['basics', 'macros', 'preferences', 'consistency'] as const
 type Step = typeof STEPS[number]
@@ -177,12 +178,13 @@ export default function OnboardingPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Weight in lbs (optional)
                 </label>
-                <input
-                  type="number"
-                  value={formData.weight || ''}
-                  onChange={(e) => setFormData({ ...formData, weight: e.target.value ? Number(e.target.value) : null })}
+                <NumericInput
+                  value={formData.weight || 0}
+                  onChange={(val) => setFormData({ ...formData, weight: val || null })}
                   className="input-field"
                   placeholder="e.g., 175"
+                  min={0}
+                  max={999}
                 />
                 <p className="mt-1 text-sm text-gray-500">
                   Helps personalize recommendations
@@ -204,13 +206,13 @@ export default function OnboardingPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Protein (g)
                   </label>
-                  <input
-                    type="number"
+                  <NumericInput
                     value={formData.target_protein}
-                    onChange={(e) => setFormData({ ...formData, target_protein: Number(e.target.value) })}
+                    onChange={(val) => setFormData({ ...formData, target_protein: val })}
                     className="input-field"
-                    min="50"
-                    max="500"
+                    min={50}
+                    max={500}
+                    allowEmpty={false}
                   />
                 </div>
 
@@ -218,13 +220,13 @@ export default function OnboardingPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Carbs (g)
                   </label>
-                  <input
-                    type="number"
+                  <NumericInput
                     value={formData.target_carbs}
-                    onChange={(e) => setFormData({ ...formData, target_carbs: Number(e.target.value) })}
+                    onChange={(val) => setFormData({ ...formData, target_carbs: val })}
                     className="input-field"
-                    min="50"
-                    max="600"
+                    min={50}
+                    max={600}
+                    allowEmpty={false}
                   />
                 </div>
 
@@ -232,13 +234,13 @@ export default function OnboardingPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Fat (g)
                   </label>
-                  <input
-                    type="number"
+                  <NumericInput
                     value={formData.target_fat}
-                    onChange={(e) => setFormData({ ...formData, target_fat: Number(e.target.value) })}
+                    onChange={(val) => setFormData({ ...formData, target_fat: val })}
                     className="input-field"
-                    min="20"
-                    max="300"
+                    min={20}
+                    max={300}
+                    allowEmpty={false}
                   />
                 </div>
 
@@ -247,7 +249,7 @@ export default function OnboardingPage() {
                     Calories (calculated)
                   </label>
                   <input
-                    type="number"
+                    type="text"
                     value={formData.target_calories}
                     className="input-field bg-gray-100"
                     disabled
