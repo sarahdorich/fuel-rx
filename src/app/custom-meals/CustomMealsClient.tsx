@@ -3,7 +3,8 @@
 import { useState, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import type { ValidatedMeal, ValidatedMealIngredient } from '@/lib/types'
+import type { ValidatedMeal, ValidatedMealIngredient, CustomMealPrepTime } from '@/lib/types'
+import { CUSTOM_MEAL_PREP_TIME_OPTIONS } from '@/lib/types'
 import NumericInput from '@/components/NumericInput'
 import { compressImage, isValidImageType, formatFileSize } from '@/lib/imageCompression'
 
@@ -54,6 +55,12 @@ export default function CustomMealsClient({ initialMeals }: Props) {
   // Quick Add mode - enter total macros directly without ingredients
   const [isQuickAddMode, setIsQuickAddMode] = useState(false)
   const [quickMacros, setQuickMacros] = useState({ calories: 0, protein: 0, carbs: 0, fat: 0 })
+
+  // Prep time selection
+  const [prepTime, setPrepTime] = useState<CustomMealPrepTime | null>(null)
+
+  // Edit mode state
+  const [editingMealId, setEditingMealId] = useState<string | null>(null)
 
   // Calculate totals from ingredients or use quick macros
   const ingredientTotals = ingredients.reduce(
@@ -140,6 +147,72 @@ export default function CustomMealsClient({ initialMeals }: Props) {
     }
   }
 
+  const resetForm = () => {
+    setMealName('')
+    setIngredients([{ ...emptyIngredient }])
+    removeImage()
+    setShareWithCommunity(false)
+    setIsQuickAddMode(false)
+    setQuickMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 })
+    setPrepTime(null)
+    setEditingMealId(null)
+    setShowCreateForm(false)
+    setError(null)
+  }
+
+  const startEditMeal = (meal: ValidatedMeal) => {
+    setEditingMealId(meal.id)
+    setMealName(meal.meal_name)
+    setPrepTime(meal.prep_time || null)
+    setShareWithCommunity(meal.share_with_community)
+
+    // Set existing image preview if meal has an image
+    if (meal.image_url) {
+      setImagePreview(meal.image_url)
+    } else {
+      setImagePreview(null)
+    }
+    setImageFile(null)
+    setCompressionInfo(null)
+
+    // Check if this was a quick add meal (single ingredient with same name as meal)
+    const isQuickAdd = meal.ingredients &&
+      meal.ingredients.length === 1 &&
+      (meal.ingredients as ValidatedMealIngredient[])[0].name === meal.meal_name
+
+    if (isQuickAdd) {
+      setIsQuickAddMode(true)
+      setQuickMacros({
+        calories: meal.calories,
+        protein: meal.protein,
+        carbs: meal.carbs,
+        fat: meal.fat,
+      })
+      setIngredients([{ ...emptyIngredient }])
+    } else {
+      setIsQuickAddMode(false)
+      setQuickMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 })
+      // Convert stored ingredients back to IngredientInput format
+      if (meal.ingredients && (meal.ingredients as ValidatedMealIngredient[]).length > 0) {
+        const ingredientInputs: IngredientInput[] = (meal.ingredients as ValidatedMealIngredient[]).map((ing) => ({
+          name: ing.name,
+          amount: `${ing.amount}${ing.unit ? ' ' + ing.unit : ''}`.trim(),
+          calories: ing.calories,
+          protein: ing.protein,
+          carbs: ing.carbs,
+          fat: ing.fat,
+          isExpanded: false,
+        }))
+        setIngredients(ingredientInputs)
+      } else {
+        setIngredients([{ ...emptyIngredient }])
+      }
+    }
+
+    setShowCreateForm(true)
+    setExpandedMealId(null)
+  }
+
   const uploadImage = async (): Promise<string | null> => {
     if (!imageFile) return null
 
@@ -192,11 +265,14 @@ export default function CustomMealsClient({ initialMeals }: Props) {
     setSaving(true)
 
     try {
-      // Upload image first if one is selected
+      // Upload image first if one is selected (new image)
       let imageUrl: string | null = null
       if (imageFile) {
         imageUrl = await uploadImage()
         // Continue even if image upload fails - meal can be saved without image
+      } else if (editingMealId && imagePreview && !imagePreview.startsWith('blob:')) {
+        // Keep existing image URL when editing without uploading new image
+        imageUrl = imagePreview
       }
 
       // Build ingredients array - in quick add mode, create a single "whole meal" ingredient
@@ -226,14 +302,17 @@ export default function CustomMealsClient({ initialMeals }: Props) {
             }
           })
 
+      const isEditing = !!editingMealId
       const response = await fetch('/api/custom-meals', {
-        method: 'POST',
+        method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          ...(isEditing && { id: editingMealId }),
           meal_name: mealName.trim(),
           ingredients: ingredientsToSave,
           image_url: imageUrl,
           share_with_community: shareWithCommunity,
+          prep_time: prepTime,
         }),
       })
 
@@ -245,23 +324,21 @@ export default function CustomMealsClient({ initialMeals }: Props) {
       const savedMeal = await response.json()
 
       // Update the meals list
-      const existingIndex = meals.findIndex((m) => m.meal_name === savedMeal.meal_name)
-      if (existingIndex >= 0) {
-        const updated = [...meals]
-        updated[existingIndex] = savedMeal
-        setMeals(updated)
+      if (isEditing) {
+        setMeals(meals.map((m) => m.id === savedMeal.id ? savedMeal : m))
       } else {
-        setMeals([savedMeal, ...meals])
+        const existingIndex = meals.findIndex((m) => m.meal_name === savedMeal.meal_name)
+        if (existingIndex >= 0) {
+          const updated = [...meals]
+          updated[existingIndex] = savedMeal
+          setMeals(updated)
+        } else {
+          setMeals([savedMeal, ...meals])
+        }
       }
 
       // Reset form
-      setMealName('')
-      setIngredients([{ ...emptyIngredient }])
-      removeImage()
-      setShareWithCommunity(false)
-      setIsQuickAddMode(false)
-      setQuickMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 })
-      setShowCreateForm(false)
+      resetForm()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save meal')
     } finally {
@@ -317,7 +394,9 @@ export default function CustomMealsClient({ initialMeals }: Props) {
           </button>
         ) : (
           <div className="card mb-8">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Create Custom Meal</h2>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">
+              {editingMealId ? 'Edit Custom Meal' : 'Create Custom Meal'}
+            </h2>
 
             {/* Meal Name */}
             <div className="mb-6">
@@ -624,7 +703,7 @@ export default function CustomMealsClient({ initialMeals }: Props) {
                       src={imagePreview}
                       alt="Meal preview"
                       fill
-                      className="object-cover"
+                      className="object-contain"
                     />
                   </div>
                   <button
@@ -666,6 +745,29 @@ export default function CustomMealsClient({ initialMeals }: Props) {
               )}
             </div>
 
+            {/* Prep Time */}
+            <div className="mt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Prep Time (optional)
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {CUSTOM_MEAL_PREP_TIME_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setPrepTime(prepTime === option.value ? null : option.value)}
+                    className={`py-2 px-3 text-sm rounded-lg border transition-all ${
+                      prepTime === option.value
+                        ? 'border-primary-500 bg-primary-50 text-primary-700 font-medium'
+                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* Share with Community */}
             <div className="mt-6 p-4 bg-gray-50 rounded-lg">
               <label className="flex items-start gap-3 cursor-pointer">
@@ -690,23 +792,14 @@ export default function CustomMealsClient({ initialMeals }: Props) {
             {/* Form actions */}
             <div className="flex gap-3 mt-6">
               <button
-                onClick={() => {
-                  setShowCreateForm(false)
-                  setMealName('')
-                  setIngredients([{ ...emptyIngredient }])
-                  setError(null)
-                  removeImage()
-                  setShareWithCommunity(false)
-                  setIsQuickAddMode(false)
-                  setQuickMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 })
-                }}
+                onClick={resetForm}
                 className="btn-outline flex-1"
                 disabled={saving}
               >
                 Cancel
               </button>
               <button onClick={handleSave} className="btn-primary flex-1" disabled={saving || uploadingImage}>
-                {uploadingImage ? 'Uploading Image...' : saving ? 'Saving...' : 'Save Meal'}
+                {uploadingImage ? 'Uploading Image...' : saving ? 'Saving...' : editingMealId ? 'Update Meal' : 'Save Meal'}
               </button>
             </div>
           </div>
@@ -732,12 +825,12 @@ export default function CustomMealsClient({ initialMeals }: Props) {
                 >
                   <div className="flex gap-4">
                     {meal.image_url && (
-                      <div className="relative w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
+                      <div className="relative w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100">
                         <Image
                           src={meal.image_url}
                           alt={meal.meal_name}
                           fill
-                          className="object-cover"
+                          className="object-contain"
                         />
                       </div>
                     )}
@@ -750,15 +843,29 @@ export default function CustomMealsClient({ initialMeals }: Props) {
                           </span>
                         )}
                       </div>
-                      <div className="flex gap-4 mt-1 text-sm text-gray-600">
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm text-gray-600">
                         <span>{meal.calories} kcal</span>
                         <span>P: {meal.protein}g</span>
                         <span>C: {meal.carbs}g</span>
                         <span>F: {meal.fat}g</span>
+                        {meal.prep_time && (
+                          <span className="text-gray-500">
+                            {CUSTOM_MEAL_PREP_TIME_OPTIONS.find(o => o.value === meal.prep_time)?.label}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        startEditMeal(meal)
+                      }}
+                      className="text-primary-600 hover:text-primary-800 text-sm"
+                    >
+                      Edit
+                    </button>
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -785,12 +892,12 @@ export default function CustomMealsClient({ initialMeals }: Props) {
                   <div className="mt-4 pt-4 border-t border-gray-200">
                     {meal.image_url && (
                       <div className="mb-4">
-                        <div className="relative w-full h-48 rounded-lg overflow-hidden">
+                        <div className="relative w-full h-48 rounded-lg overflow-hidden bg-gray-100">
                           <Image
                             src={meal.image_url}
                             alt={meal.meal_name}
                             fill
-                            className="object-cover"
+                            className="object-contain"
                           />
                         </div>
                       </div>
