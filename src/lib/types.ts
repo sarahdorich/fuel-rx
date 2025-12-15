@@ -137,6 +137,15 @@ export interface ValidatedMealIngredient {
   fat: number;
 }
 
+export type CustomMealPrepTime = '5_or_less' | '15' | '30' | 'more_than_30';
+
+export const CUSTOM_MEAL_PREP_TIME_OPTIONS: { value: CustomMealPrepTime; label: string }[] = [
+  { value: '5_or_less', label: '5 minutes or less' },
+  { value: '15', label: '15 minutes' },
+  { value: '30', label: '30 minutes' },
+  { value: 'more_than_30', label: 'More than 30 minutes' },
+];
+
 export interface ValidatedMeal {
   id: string;
   user_id: string;
@@ -147,6 +156,9 @@ export interface ValidatedMeal {
   fat: number;
   ingredients: ValidatedMealIngredient[] | null;
   is_user_created: boolean;
+  image_url: string | null;
+  share_with_community: boolean;
+  prep_time: CustomMealPrepTime | null;
   created_at: string;
   updated_at: string;
 }
