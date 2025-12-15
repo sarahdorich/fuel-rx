@@ -13,22 +13,22 @@ interface Props {
 
 interface IngredientInput {
   name: string
-  amount: string
-  unit: string
+  amount: string // Combined amount and unit (e.g., "1 cup", "100g")
   calories: number
   protein: number
   carbs: number
   fat: number
+  isExpanded: boolean
 }
 
 const emptyIngredient: IngredientInput = {
   name: '',
   amount: '',
-  unit: '',
   calories: 0,
   protein: 0,
   carbs: 0,
   fat: 0,
+  isExpanded: true,
 }
 
 export default function CustomMealsClient({ initialMeals }: Props) {
@@ -51,8 +51,12 @@ export default function CustomMealsClient({ initialMeals }: Props) {
   // Share with community checkbox
   const [shareWithCommunity, setShareWithCommunity] = useState(false)
 
-  // Calculate totals from ingredients
-  const totals = ingredients.reduce(
+  // Quick Add mode - enter total macros directly without ingredients
+  const [isQuickAddMode, setIsQuickAddMode] = useState(false)
+  const [quickMacros, setQuickMacros] = useState({ calories: 0, protein: 0, carbs: 0, fat: 0 })
+
+  // Calculate totals from ingredients or use quick macros
+  const ingredientTotals = ingredients.reduce(
     (acc, ing) => ({
       calories: acc.calories + (ing.calories || 0),
       protein: acc.protein + (ing.protein || 0),
@@ -61,6 +65,13 @@ export default function CustomMealsClient({ initialMeals }: Props) {
     }),
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   )
+  const totals = isQuickAddMode ? quickMacros : ingredientTotals
+
+  const toggleIngredientExpanded = (index: number) => {
+    const updated = [...ingredients]
+    updated[index] = { ...updated[index], isExpanded: !updated[index].isExpanded }
+    setIngredients(updated)
+  }
 
   const addIngredient = () => {
     setIngredients([...ingredients, { ...emptyIngredient }])
@@ -165,9 +176,16 @@ export default function CustomMealsClient({ initialMeals }: Props) {
       return
     }
 
+    // In quick add mode, we don't require ingredients
     const validIngredients = ingredients.filter((ing) => ing.name.trim() !== '')
-    if (validIngredients.length === 0) {
+    if (!isQuickAddMode && validIngredients.length === 0) {
       setError('Please add at least one ingredient with a name')
+      return
+    }
+
+    // In quick add mode, require at least calories to be set
+    if (isQuickAddMode && quickMacros.calories === 0) {
+      setError('Please enter at least the calorie amount')
       return
     }
 
@@ -181,20 +199,39 @@ export default function CustomMealsClient({ initialMeals }: Props) {
         // Continue even if image upload fails - meal can be saved without image
       }
 
+      // Build ingredients array - in quick add mode, create a single "whole meal" ingredient
+      const ingredientsToSave = isQuickAddMode
+        ? [{
+            name: mealName.trim(),
+            amount: '1',
+            unit: 'serving',
+            calories: Number(quickMacros.calories) || 0,
+            protein: Number(quickMacros.protein) || 0,
+            carbs: Number(quickMacros.carbs) || 0,
+            fat: Number(quickMacros.fat) || 0,
+          }]
+        : validIngredients.map((ing) => {
+            // Parse combined amount field (e.g., "1 cup" -> amount: "1", unit: "cup")
+            const amountParts = ing.amount.trim().split(/\s+/)
+            const amount = amountParts[0] || ''
+            const unit = amountParts.slice(1).join(' ') || ''
+            return {
+              name: ing.name.trim(),
+              amount,
+              unit,
+              calories: Number(ing.calories) || 0,
+              protein: Number(ing.protein) || 0,
+              carbs: Number(ing.carbs) || 0,
+              fat: Number(ing.fat) || 0,
+            }
+          })
+
       const response = await fetch('/api/custom-meals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           meal_name: mealName.trim(),
-          ingredients: validIngredients.map((ing) => ({
-            name: ing.name.trim(),
-            amount: ing.amount.trim(),
-            unit: ing.unit.trim(),
-            calories: Number(ing.calories) || 0,
-            protein: Number(ing.protein) || 0,
-            carbs: Number(ing.carbs) || 0,
-            fat: Number(ing.fat) || 0,
-          })),
+          ingredients: ingredientsToSave,
           image_url: imageUrl,
           share_with_community: shareWithCommunity,
         }),
@@ -222,6 +259,8 @@ export default function CustomMealsClient({ initialMeals }: Props) {
       setIngredients([{ ...emptyIngredient }])
       removeImage()
       setShareWithCommunity(false)
+      setIsQuickAddMode(false)
+      setQuickMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 })
       setShowCreateForm(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save meal')
@@ -280,138 +319,294 @@ export default function CustomMealsClient({ initialMeals }: Props) {
           <div className="card mb-8">
             <h2 className="text-xl font-semibold text-gray-900 mb-4">Create Custom Meal</h2>
 
-            <div className="mb-4">
+            {/* Meal Name */}
+            <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-1">Meal Name *</label>
               <input
                 type="text"
                 value={mealName}
                 onChange={(e) => setMealName(e.target.value)}
                 placeholder="e.g., Protein Oatmeal Bowl"
-                className="input"
+                className="input text-lg"
               />
             </div>
 
-            <h3 className="text-lg font-medium text-gray-900 mb-3">Ingredients</h3>
-            <p className="text-sm text-gray-500 mb-4">
-              Add each ingredient with its macros. The total meal macros will be calculated automatically.
-            </p>
-
-            <div className="space-y-4">
-              {ingredients.map((ingredient, index) => (
-                <div key={index} className="bg-gray-50 p-4 rounded-lg">
-                  <div className="flex justify-between items-center mb-3">
-                    <span className="text-sm font-medium text-gray-700">Ingredient {index + 1}</span>
-                    {ingredients.length > 1 && (
-                      <button
-                        onClick={() => removeIngredient(index)}
-                        className="text-red-600 hover:text-red-800 text-sm"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-3 mb-3">
-                    <div className="col-span-3 sm:col-span-1">
-                      <label className="block text-xs text-gray-500 mb-1">Name *</label>
-                      <input
-                        type="text"
-                        value={ingredient.name}
-                        onChange={(e) => updateIngredient(index, 'name', e.target.value)}
-                        placeholder="e.g., Rolled oats"
-                        className="input text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Amount</label>
-                      <input
-                        type="text"
-                        value={ingredient.amount}
-                        onChange={(e) => updateIngredient(index, 'amount', e.target.value)}
-                        placeholder="e.g., 1"
-                        className="input text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Unit</label>
-                      <input
-                        type="text"
-                        value={ingredient.unit}
-                        onChange={(e) => updateIngredient(index, 'unit', e.target.value)}
-                        placeholder="e.g., cup"
-                        className="input text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Calories *</label>
-                      <NumericInput
-                        value={ingredient.calories}
-                        onChange={(val) => updateIngredient(index, 'calories', val)}
-                        min={0}
-                        className="input text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Protein (g) *</label>
-                      <NumericInput
-                        value={ingredient.protein}
-                        onChange={(val) => updateIngredient(index, 'protein', val)}
-                        min={0}
-                        className="input text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Carbs (g) *</label>
-                      <NumericInput
-                        value={ingredient.carbs}
-                        onChange={(val) => updateIngredient(index, 'carbs', val)}
-                        min={0}
-                        className="input text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 mb-1">Fat (g) *</label>
-                      <NumericInput
-                        value={ingredient.fat}
-                        onChange={(val) => updateIngredient(index, 'fat', val)}
-                        min={0}
-                        className="input text-sm"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
+            {/* Mode Toggle */}
+            <div className="flex rounded-lg bg-gray-100 p-1 mb-6">
+              <button
+                type="button"
+                onClick={() => setIsQuickAddMode(false)}
+                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
+                  !isQuickAddMode
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                With Ingredients
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsQuickAddMode(true)}
+                className={`flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${
+                  isQuickAddMode
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-900'
+                }`}
+              >
+                Quick Add (Totals Only)
+              </button>
             </div>
 
-            <button onClick={addIngredient} className="text-primary-600 hover:text-primary-800 text-sm mt-3">
-              + Add Another Ingredient
-            </button>
-
-            {/* Totals */}
-            <div className="bg-primary-50 p-4 rounded-lg mt-6">
-              <h4 className="text-sm font-medium text-primary-900 mb-2">Meal Totals</h4>
-              <div className="grid grid-cols-4 gap-4 text-center">
-                <div>
-                  <p className="text-2xl font-bold text-primary-700">{totals.calories}</p>
-                  <p className="text-xs text-primary-600">Calories</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-primary-700">{totals.protein}g</p>
-                  <p className="text-xs text-primary-600">Protein</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-primary-700">{totals.carbs}g</p>
-                  <p className="text-xs text-primary-600">Carbs</p>
-                </div>
-                <div>
-                  <p className="text-2xl font-bold text-primary-700">{totals.fat}g</p>
-                  <p className="text-xs text-primary-600">Fat</p>
+            {isQuickAddMode ? (
+              /* Quick Add Mode - Just enter total macros */
+              <div className="space-y-4">
+                <p className="text-sm text-gray-500">
+                  Enter the total macros for your meal. Perfect for meals where you already know the totals.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-orange-50 rounded-lg p-4">
+                    <label className="flex items-center gap-2 text-sm font-medium text-orange-800 mb-2">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                      </svg>
+                      Calories *
+                    </label>
+                    <NumericInput
+                      value={quickMacros.calories}
+                      onChange={(val) => setQuickMacros({ ...quickMacros, calories: val })}
+                      min={0}
+                      className="input text-lg font-semibold"
+                    />
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-4">
+                    <label className="flex items-center gap-2 text-sm font-medium text-blue-800 mb-2">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                      Protein (g)
+                    </label>
+                    <NumericInput
+                      value={quickMacros.protein}
+                      onChange={(val) => setQuickMacros({ ...quickMacros, protein: val })}
+                      min={0}
+                      className="input text-lg font-semibold"
+                    />
+                  </div>
+                  <div className="bg-amber-50 rounded-lg p-4">
+                    <label className="flex items-center gap-2 text-sm font-medium text-amber-800 mb-2">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      Carbs (g)
+                    </label>
+                    <NumericInput
+                      value={quickMacros.carbs}
+                      onChange={(val) => setQuickMacros({ ...quickMacros, carbs: val })}
+                      min={0}
+                      className="input text-lg font-semibold"
+                    />
+                  </div>
+                  <div className="bg-purple-50 rounded-lg p-4">
+                    <label className="flex items-center gap-2 text-sm font-medium text-purple-800 mb-2">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                      </svg>
+                      Fat (g)
+                    </label>
+                    <NumericInput
+                      value={quickMacros.fat}
+                      onChange={(val) => setQuickMacros({ ...quickMacros, fat: val })}
+                      min={0}
+                      className="input text-lg font-semibold"
+                    />
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              /* Detailed Ingredients Mode */
+              <>
+                <p className="text-sm text-gray-500 mb-4">
+                  Add each ingredient with its macros. The total will be calculated automatically.
+                </p>
+
+                <div className="space-y-3">
+                  {ingredients.map((ingredient, index) => (
+                    <div key={index} className="border border-gray-200 rounded-lg overflow-hidden">
+                      {/* Ingredient Header - Always visible */}
+                      <div
+                        className={`flex items-center gap-3 p-3 cursor-pointer transition-colors ${
+                          ingredient.isExpanded ? 'bg-gray-50' : 'hover:bg-gray-50'
+                        }`}
+                        onClick={() => toggleIngredientExpanded(index)}
+                      >
+                        <svg
+                          className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${
+                            ingredient.isExpanded ? 'rotate-90' : ''
+                          }`}
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                        <div className="flex-1 min-w-0">
+                          {ingredient.name ? (
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900 truncate">
+                                {ingredient.amount && `${ingredient.amount} `}{ingredient.name}
+                              </span>
+                              {(ingredient.calories > 0) && (
+                                <span className="text-xs text-gray-500 flex-shrink-0">
+                                  {ingredient.calories} cal
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">Ingredient {index + 1}</span>
+                          )}
+                        </div>
+                        {ingredients.length > 1 && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removeIngredient(index)
+                            }}
+                            className="text-gray-400 hover:text-red-600 p-1 flex-shrink-0"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Expanded Details */}
+                      {ingredient.isExpanded && (
+                        <div className="p-4 pt-2 space-y-4 border-t border-gray-100">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Ingredient Name *</label>
+                              <input
+                                type="text"
+                                value={ingredient.name}
+                                onChange={(e) => updateIngredient(index, 'name', e.target.value)}
+                                placeholder="e.g., Rolled oats"
+                                className="input"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-gray-500 mb-1">Amount (e.g., &quot;1 cup&quot;)</label>
+                              <input
+                                type="text"
+                                value={ingredient.amount}
+                                onChange={(e) => updateIngredient(index, 'amount', e.target.value)}
+                                placeholder="e.g., 1 cup, 100g"
+                                className="input"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Macros Grid - 2x2 on mobile, 4 columns on desktop */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="bg-orange-50 rounded-lg p-3">
+                              <label className="flex items-center gap-1.5 text-xs font-medium text-orange-700 mb-1">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                                </svg>
+                                Calories
+                              </label>
+                              <NumericInput
+                                value={ingredient.calories}
+                                onChange={(val) => updateIngredient(index, 'calories', val)}
+                                min={0}
+                                className="input text-sm font-medium"
+                              />
+                            </div>
+                            <div className="bg-blue-50 rounded-lg p-3">
+                              <label className="flex items-center gap-1.5 text-xs font-medium text-blue-700 mb-1">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                                </svg>
+                                Protein
+                              </label>
+                              <NumericInput
+                                value={ingredient.protein}
+                                onChange={(val) => updateIngredient(index, 'protein', val)}
+                                min={0}
+                                className="input text-sm font-medium"
+                              />
+                            </div>
+                            <div className="bg-amber-50 rounded-lg p-3">
+                              <label className="flex items-center gap-1.5 text-xs font-medium text-amber-700 mb-1">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                                Carbs
+                              </label>
+                              <NumericInput
+                                value={ingredient.carbs}
+                                onChange={(val) => updateIngredient(index, 'carbs', val)}
+                                min={0}
+                                className="input text-sm font-medium"
+                              />
+                            </div>
+                            <div className="bg-purple-50 rounded-lg p-3">
+                              <label className="flex items-center gap-1.5 text-xs font-medium text-purple-700 mb-1">
+                                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                                </svg>
+                                Fat
+                              </label>
+                              <NumericInput
+                                value={ingredient.fat}
+                                onChange={(val) => updateIngredient(index, 'fat', val)}
+                                min={0}
+                                className="input text-sm font-medium"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={addIngredient}
+                  className="flex items-center gap-2 text-primary-600 hover:text-primary-800 text-sm mt-3 font-medium"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Another Ingredient
+                </button>
+
+                {/* Running Totals */}
+                <div className="bg-primary-50 rounded-lg p-4 mt-6">
+                  <h4 className="text-sm font-medium text-primary-900 mb-3">Meal Totals</h4>
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div>
+                      <p className="text-xl sm:text-2xl font-bold text-primary-700">{totals.calories}</p>
+                      <p className="text-xs text-primary-600">Cal</p>
+                    </div>
+                    <div>
+                      <p className="text-xl sm:text-2xl font-bold text-primary-700">{totals.protein}g</p>
+                      <p className="text-xs text-primary-600">Protein</p>
+                    </div>
+                    <div>
+                      <p className="text-xl sm:text-2xl font-bold text-primary-700">{totals.carbs}g</p>
+                      <p className="text-xs text-primary-600">Carbs</p>
+                    </div>
+                    <div>
+                      <p className="text-xl sm:text-2xl font-bold text-primary-700">{totals.fat}g</p>
+                      <p className="text-xs text-primary-600">Fat</p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Image Upload */}
             <div className="mt-6">
@@ -502,6 +697,8 @@ export default function CustomMealsClient({ initialMeals }: Props) {
                   setError(null)
                   removeImage()
                   setShareWithCommunity(false)
+                  setIsQuickAddMode(false)
+                  setQuickMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 })
                 }}
                 className="btn-outline flex-1"
                 disabled={saving}
