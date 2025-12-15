@@ -1,9 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import type { ValidatedMeal, ValidatedMealIngredient } from '@/lib/types'
 import NumericInput from '@/components/NumericInput'
+import { compressImage, isValidImageType, formatFileSize } from '@/lib/imageCompression'
 
 interface Props {
   initialMeals: ValidatedMeal[]
@@ -38,6 +40,17 @@ export default function CustomMealsClient({ initialMeals }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [expandedMealId, setExpandedMealId] = useState<string | null>(null)
 
+  // Image upload state
+  const [imageFile, setImageFile] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
+  const [compressionInfo, setCompressionInfo] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Share with community checkbox
+  const [shareWithCommunity, setShareWithCommunity] = useState(false)
+
   // Calculate totals from ingredients
   const totals = ingredients.reduce(
     (acc, ing) => ({
@@ -65,6 +78,85 @@ export default function CustomMealsClient({ initialMeals }: Props) {
     setIngredients(updated)
   }
 
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setImageError(null)
+    setCompressionInfo(null)
+
+    // Validate file type
+    if (!isValidImageType(file)) {
+      setImageError('Please select a JPEG, PNG, or WebP image')
+      return
+    }
+
+    try {
+      const originalSize = file.size
+
+      // Compress the image
+      const compressedBlob = await compressImage(file)
+      const compressedSize = compressedBlob.size
+
+      // Create a new File from the compressed blob
+      const compressedFile = new File([compressedBlob], file.name, {
+        type: 'image/jpeg',
+      })
+
+      setImageFile(compressedFile)
+      setCompressionInfo(
+        `Compressed: ${formatFileSize(originalSize)} → ${formatFileSize(compressedSize)} (${Math.round((1 - compressedSize / originalSize) * 100)}% smaller)`
+      )
+
+      // Create preview URL
+      const previewUrl = URL.createObjectURL(compressedBlob)
+      setImagePreview(previewUrl)
+    } catch {
+      setImageError('Failed to process image. Please try another file.')
+    }
+  }
+
+  const removeImage = () => {
+    setImageFile(null)
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview)
+    }
+    setImagePreview(null)
+    setCompressionInfo(null)
+    setImageError(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const uploadImage = async (): Promise<string | null> => {
+    if (!imageFile) return null
+
+    setUploadingImage(true)
+    try {
+      const formData = new FormData()
+      formData.append('image', imageFile)
+
+      const response = await fetch('/api/upload-meal-image', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to upload image')
+      }
+
+      const { url } = await response.json()
+      return url
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : 'Failed to upload image')
+      return null
+    } finally {
+      setUploadingImage(false)
+    }
+  }
+
   const handleSave = async () => {
     setError(null)
 
@@ -82,6 +174,13 @@ export default function CustomMealsClient({ initialMeals }: Props) {
     setSaving(true)
 
     try {
+      // Upload image first if one is selected
+      let imageUrl: string | null = null
+      if (imageFile) {
+        imageUrl = await uploadImage()
+        // Continue even if image upload fails - meal can be saved without image
+      }
+
       const response = await fetch('/api/custom-meals', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -96,6 +195,8 @@ export default function CustomMealsClient({ initialMeals }: Props) {
             carbs: Number(ing.carbs) || 0,
             fat: Number(ing.fat) || 0,
           })),
+          image_url: imageUrl,
+          share_with_community: shareWithCommunity,
         }),
       })
 
@@ -119,6 +220,8 @@ export default function CustomMealsClient({ initialMeals }: Props) {
       // Reset form
       setMealName('')
       setIngredients([{ ...emptyIngredient }])
+      removeImage()
+      setShareWithCommunity(false)
       setShowCreateForm(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save meal')
@@ -310,6 +413,85 @@ export default function CustomMealsClient({ initialMeals }: Props) {
               </div>
             </div>
 
+            {/* Image Upload */}
+            <div className="mt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Meal Photo (optional)
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                Add a photo of your meal. Images are automatically compressed to save storage.
+              </p>
+
+              {imagePreview ? (
+                <div className="relative">
+                  <div className="relative w-full h-48 rounded-lg overflow-hidden bg-gray-100">
+                    <Image
+                      src={imagePreview}
+                      alt="Meal preview"
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
+                  <button
+                    onClick={removeImage}
+                    className="absolute top-2 right-2 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
+                    type="button"
+                  >
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                  {compressionInfo && (
+                    <p className="text-xs text-green-600 mt-2">{compressionInfo}</p>
+                  )}
+                </div>
+              ) : (
+                <div
+                  onClick={() => fileInputRef.current?.click()}
+                  className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-primary-400 transition-colors"
+                >
+                  <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  <p className="mt-2 text-sm text-gray-600">Click to upload a photo</p>
+                  <p className="text-xs text-gray-400">JPEG, PNG, WebP up to 5MB</p>
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif"
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+
+              {imageError && (
+                <p className="text-sm text-red-600 mt-2">{imageError}</p>
+              )}
+            </div>
+
+            {/* Share with Community */}
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={shareWithCommunity}
+                  onChange={(e) => setShareWithCommunity(e.target.checked)}
+                  className="mt-1 h-4 w-4 text-primary-600 rounded border-gray-300 focus:ring-primary-500"
+                />
+                <div>
+                  <span className="text-sm font-medium text-gray-900">
+                    Share this meal with the community
+                  </span>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Allow FuelRx AI to recommend this meal to other users when generating their meal plans.
+                    Your name and personal info will not be shared.
+                  </p>
+                </div>
+              </label>
+            </div>
+
             {/* Form actions */}
             <div className="flex gap-3 mt-6">
               <button
@@ -318,14 +500,16 @@ export default function CustomMealsClient({ initialMeals }: Props) {
                   setMealName('')
                   setIngredients([{ ...emptyIngredient }])
                   setError(null)
+                  removeImage()
+                  setShareWithCommunity(false)
                 }}
                 className="btn-outline flex-1"
                 disabled={saving}
               >
                 Cancel
               </button>
-              <button onClick={handleSave} className="btn-primary flex-1" disabled={saving}>
-                {saving ? 'Saving...' : 'Save Meal'}
+              <button onClick={handleSave} className="btn-primary flex-1" disabled={saving || uploadingImage}>
+                {uploadingImage ? 'Uploading Image...' : saving ? 'Saving...' : 'Save Meal'}
               </button>
             </div>
           </div>
@@ -349,13 +533,32 @@ export default function CustomMealsClient({ initialMeals }: Props) {
                   className="flex justify-between items-start cursor-pointer"
                   onClick={() => setExpandedMealId(expandedMealId === meal.id ? null : meal.id)}
                 >
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">{meal.meal_name}</h3>
-                    <div className="flex gap-4 mt-1 text-sm text-gray-600">
-                      <span>{meal.calories} kcal</span>
-                      <span>P: {meal.protein}g</span>
-                      <span>C: {meal.carbs}g</span>
-                      <span>F: {meal.fat}g</span>
+                  <div className="flex gap-4">
+                    {meal.image_url && (
+                      <div className="relative w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
+                        <Image
+                          src={meal.image_url}
+                          alt={meal.meal_name}
+                          fill
+                          className="object-cover"
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-semibold text-gray-900">{meal.meal_name}</h3>
+                        {meal.share_with_community && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                            Shared
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-4 mt-1 text-sm text-gray-600">
+                        <span>{meal.calories} kcal</span>
+                        <span>P: {meal.protein}g</span>
+                        <span>C: {meal.carbs}g</span>
+                        <span>F: {meal.fat}g</span>
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -381,23 +584,39 @@ export default function CustomMealsClient({ initialMeals }: Props) {
                   </div>
                 </div>
 
-                {expandedMealId === meal.id && meal.ingredients && (
+                {expandedMealId === meal.id && (
                   <div className="mt-4 pt-4 border-t border-gray-200">
-                    <h4 className="text-sm font-medium text-gray-700 mb-2">Ingredients</h4>
-                    <div className="space-y-2">
-                      {(meal.ingredients as ValidatedMealIngredient[]).map((ing, idx) => (
-                        <div key={idx} className="flex justify-between text-sm bg-gray-50 p-2 rounded">
-                          <span className="text-gray-900">
-                            {ing.amount && `${ing.amount} `}
-                            {ing.unit && `${ing.unit} `}
-                            {ing.name}
-                          </span>
-                          <span className="text-gray-500">
-                            {ing.calories} cal | P:{ing.protein}g C:{ing.carbs}g F:{ing.fat}g
-                          </span>
+                    {meal.image_url && (
+                      <div className="mb-4">
+                        <div className="relative w-full h-48 rounded-lg overflow-hidden">
+                          <Image
+                            src={meal.image_url}
+                            alt={meal.meal_name}
+                            fill
+                            className="object-cover"
+                          />
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    )}
+                    {meal.ingredients && (
+                      <>
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Ingredients</h4>
+                        <div className="space-y-2">
+                          {(meal.ingredients as ValidatedMealIngredient[]).map((ing, idx) => (
+                            <div key={idx} className="flex justify-between text-sm bg-gray-50 p-2 rounded">
+                              <span className="text-gray-900">
+                                {ing.amount && `${ing.amount} `}
+                                {ing.unit && `${ing.unit} `}
+                                {ing.name}
+                              </span>
+                              <span className="text-gray-500">
+                                {ing.calories} cal | P:{ing.protein}g C:{ing.carbs}g F:{ing.fat}g
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

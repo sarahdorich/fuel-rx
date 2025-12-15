@@ -147,6 +147,8 @@ export interface ValidatedMeal {
   fat: number;
   ingredients: ValidatedMealIngredient[] | null;
   is_user_created: boolean;
+  image_url: string | null;
+  share_with_community: boolean;
   created_at: string;
   updated_at: string;
 }

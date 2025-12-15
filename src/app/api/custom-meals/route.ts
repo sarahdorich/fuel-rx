@@ -5,6 +5,8 @@ import type { ValidatedMealIngredient } from '@/lib/types'
 interface CreateCustomMealRequest {
   meal_name: string
   ingredients: ValidatedMealIngredient[]
+  image_url?: string | null
+  share_with_community?: boolean
 }
 
 export async function POST(request: Request) {
@@ -65,6 +67,8 @@ export async function POST(request: Request) {
         fat: totalFat,
         ingredients: body.ingredients,
         is_user_created: true,
+        image_url: body.image_url || null,
+        share_with_community: body.share_with_community || false,
       }, {
         onConflict: 'user_id,meal_name',
       })
