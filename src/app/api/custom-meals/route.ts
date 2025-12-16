@@ -8,6 +8,7 @@ interface CreateCustomMealRequest {
   image_url?: string | null
   share_with_community?: boolean
   prep_time?: CustomMealPrepTime | null
+  meal_prep_instructions?: string | null
 }
 
 interface UpdateCustomMealRequest extends CreateCustomMealRequest {
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
         image_url: body.image_url || null,
         share_with_community: body.share_with_community || false,
         prep_time: body.prep_time || null,
+        meal_prep_instructions: body.meal_prep_instructions || null,
       }, {
         onConflict: 'user_id,meal_name',
       })
@@ -107,6 +109,7 @@ export async function POST(request: Request) {
           image_url: savedMeal.image_url,
           prep_time: savedMeal.prep_time,
           ingredients: savedMeal.ingredients,
+          meal_prep_instructions: savedMeal.meal_prep_instructions,
         }, {
           onConflict: 'user_id,source_type,source_meal_id',
           ignoreDuplicates: false,
@@ -209,6 +212,7 @@ export async function PUT(request: Request) {
         image_url: body.image_url || null,
         share_with_community: body.share_with_community || false,
         prep_time: body.prep_time || null,
+        meal_prep_instructions: body.meal_prep_instructions || null,
       })
       .eq('id', body.id)
       .eq('user_id', user.id)
@@ -242,6 +246,7 @@ export async function PUT(request: Request) {
         image_url: updatedMeal.image_url,
         prep_time: updatedMeal.prep_time,
         ingredients: updatedMeal.ingredients,
+        meal_prep_instructions: updatedMeal.meal_prep_instructions,
       }, {
         onConflict: 'user_id,source_type,source_meal_id',
         ignoreDuplicates: false,

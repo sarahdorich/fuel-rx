@@ -59,6 +59,9 @@ export default function CustomMealsClient({ initialMeals }: Props) {
   // Prep time selection
   const [prepTime, setPrepTime] = useState<CustomMealPrepTime | null>(null)
 
+  // Meal prep instructions - array of steps
+  const [instructionSteps, setInstructionSteps] = useState<string[]>([''])
+
   // Edit mode state
   const [editingMealId, setEditingMealId] = useState<string | null>(null)
 
@@ -147,6 +150,22 @@ export default function CustomMealsClient({ initialMeals }: Props) {
     }
   }
 
+  const addInstructionStep = () => {
+    setInstructionSteps([...instructionSteps, ''])
+  }
+
+  const removeInstructionStep = (index: number) => {
+    if (instructionSteps.length > 1) {
+      setInstructionSteps(instructionSteps.filter((_, i) => i !== index))
+    }
+  }
+
+  const updateInstructionStep = (index: number, value: string) => {
+    const updated = [...instructionSteps]
+    updated[index] = value
+    setInstructionSteps(updated)
+  }
+
   const resetForm = () => {
     setMealName('')
     setIngredients([{ ...emptyIngredient }])
@@ -155,6 +174,7 @@ export default function CustomMealsClient({ initialMeals }: Props) {
     setIsQuickAddMode(false)
     setQuickMacros({ calories: 0, protein: 0, carbs: 0, fat: 0 })
     setPrepTime(null)
+    setInstructionSteps([''])
     setEditingMealId(null)
     setShowCreateForm(false)
     setError(null)
@@ -164,6 +184,16 @@ export default function CustomMealsClient({ initialMeals }: Props) {
     setEditingMealId(meal.id)
     setMealName(meal.meal_name)
     setPrepTime(meal.prep_time || null)
+    // Parse existing instructions into steps (split by newlines, filter empty)
+    if (meal.meal_prep_instructions) {
+      const steps = meal.meal_prep_instructions
+        .split('\n')
+        .map(s => s.replace(/^\d+\.\s*/, '').trim()) // Remove leading numbers like "1. "
+        .filter(s => s.length > 0)
+      setInstructionSteps(steps.length > 0 ? steps : [''])
+    } else {
+      setInstructionSteps([''])
+    }
     setShareWithCommunity(meal.share_with_community)
 
     // Set existing image preview if meal has an image
@@ -313,6 +343,10 @@ export default function CustomMealsClient({ initialMeals }: Props) {
           image_url: imageUrl,
           share_with_community: shareWithCommunity,
           prep_time: prepTime,
+          meal_prep_instructions: instructionSteps
+            .filter(s => s.trim().length > 0)
+            .map((step, i) => `${i + 1}. ${step.trim()}`)
+            .join('\n') || null,
         }),
       })
 
@@ -768,6 +802,53 @@ export default function CustomMealsClient({ initialMeals }: Props) {
               </div>
             </div>
 
+            {/* Meal Prep Instructions */}
+            <div className="mt-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Meal Prep Instructions (optional)
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                Add step-by-step instructions for preparing this meal.
+              </p>
+              <div className="space-y-2">
+                {instructionSteps.map((step, index) => (
+                  <div key={index} className="flex items-start gap-2">
+                    <span className="flex-shrink-0 w-6 h-9 flex items-center justify-center text-sm font-medium text-gray-500">
+                      {index + 1}.
+                    </span>
+                    <input
+                      type="text"
+                      value={step}
+                      onChange={(e) => updateInstructionStep(index, e.target.value)}
+                      placeholder={index === 0 ? "e.g., Preheat oven to 400°F" : "Next step..."}
+                      className="input flex-1"
+                    />
+                    {instructionSteps.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeInstructionStep(index)}
+                        className="flex-shrink-0 p-2 text-gray-400 hover:text-red-600"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={addInstructionStep}
+                className="flex items-center gap-2 text-primary-600 hover:text-primary-800 text-sm mt-3 font-medium"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                Add Step
+              </button>
+            </div>
+
             {/* Share with Community */}
             <div className="mt-6 p-4 bg-gray-50 rounded-lg">
               <label className="flex items-start gap-3 cursor-pointer">
@@ -920,6 +1001,14 @@ export default function CustomMealsClient({ initialMeals }: Props) {
                           ))}
                         </div>
                       </>
+                    )}
+                    {meal.meal_prep_instructions && (
+                      <div className="mt-4">
+                        <h4 className="text-sm font-medium text-gray-700 mb-2">Prep Instructions</h4>
+                        <p className="text-sm text-gray-600 whitespace-pre-wrap bg-gray-50 p-3 rounded">
+                          {meal.meal_prep_instructions}
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}
