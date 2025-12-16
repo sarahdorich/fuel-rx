@@ -13,7 +13,7 @@ export default async function SocialSettingsPage() {
 
   const { data: profile } = await supabase
     .from('user_profiles')
-    .select('social_feed_enabled, display_name, name')
+    .select('social_feed_enabled, display_name, name, profile_photo_url')
     .eq('id', user.id)
     .single()
 
@@ -23,6 +23,7 @@ export default async function SocialSettingsPage() {
         social_feed_enabled: profile?.social_feed_enabled ?? false,
         display_name: profile?.display_name ?? null,
         name: profile?.name ?? null,
+        profile_photo_url: profile?.profile_photo_url ?? null,
       }}
     />
   )

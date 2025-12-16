@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { DietaryPreference, PrepTime, MealsPerDay, OnboardingData, MealType, MealConsistency } from '@/lib/types'
 import { DIETARY_PREFERENCE_LABELS, PREP_TIME_OPTIONS, MEALS_PER_DAY_OPTIONS, DEFAULT_MEAL_CONSISTENCY_PREFS, MEAL_TYPE_LABELS } from '@/lib/types'
 import NumericInput from '@/components/NumericInput'
+import ProfilePhotoUpload from '@/components/ProfilePhotoUpload'
 
 const STEPS = ['basics', 'macros', 'preferences', 'consistency'] as const
 type Step = typeof STEPS[number]
@@ -28,6 +29,7 @@ export default function OnboardingPage() {
     meals_per_day: 3,
     prep_time: 30,
     meal_consistency_prefs: { ...DEFAULT_MEAL_CONSISTENCY_PREFS },
+    profile_photo_url: null,
   })
 
   // Auto-calculate calories when macros change
@@ -73,6 +75,7 @@ export default function OnboardingPage() {
         meals_per_day: formData.meals_per_day,
         prep_time: formData.prep_time,
         meal_consistency_prefs: formData.meal_consistency_prefs,
+        profile_photo_url: formData.profile_photo_url,
       })
       .eq('id', user.id)
 
@@ -160,6 +163,16 @@ export default function OnboardingPage() {
           {currentStep === 'basics' && (
             <div className="space-y-6">
               <h3 className="text-xl font-semibold text-gray-900">Basic Information</h3>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Profile Photo (optional)
+                </label>
+                <ProfilePhotoUpload
+                  currentPhotoUrl={formData.profile_photo_url}
+                  onPhotoChange={(url) => setFormData({ ...formData, profile_photo_url: url })}
+                />
+              </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">

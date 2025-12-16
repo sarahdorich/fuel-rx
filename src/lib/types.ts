@@ -44,6 +44,7 @@ export interface UserProfile {
   meal_consistency_prefs: MealConsistencyPrefs;
   social_feed_enabled: boolean;
   display_name: string | null;
+  profile_photo_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -109,6 +110,7 @@ export interface OnboardingData {
   meals_per_day: MealsPerDay;
   prep_time: PrepTime;
   meal_consistency_prefs: MealConsistencyPrefs;
+  profile_photo_url: string | null;
 }
 
 export const DIETARY_PREFERENCE_LABELS: Record<DietaryPreference, string> = {

@@ -2,18 +2,21 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import ProfilePhotoUpload from '@/components/ProfilePhotoUpload'
 
 interface Props {
   initialSettings: {
     social_feed_enabled: boolean
     display_name: string | null
     name: string | null
+    profile_photo_url: string | null
   }
 }
 
 export default function SocialSettingsClient({ initialSettings }: Props) {
   const [socialFeedEnabled, setSocialFeedEnabled] = useState(initialSettings.social_feed_enabled)
   const [displayName, setDisplayName] = useState(initialSettings.display_name || '')
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState(initialSettings.profile_photo_url)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -116,6 +119,21 @@ export default function SocialSettingsClient({ initialSettings }: Props) {
                 </p>
               </div>
             </label>
+          </div>
+
+          {/* Profile Photo */}
+          <div className="mb-8">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Community Profile Photo (optional)
+            </label>
+            <ProfilePhotoUpload
+              currentPhotoUrl={profilePhotoUrl}
+              onPhotoChange={setProfilePhotoUrl}
+              disabled={!socialFeedEnabled}
+            />
+            <p className="text-sm text-gray-500 mt-2">
+              This photo will be shown next to your meals in the community feed.
+            </p>
           </div>
 
           {/* Display Name */}
