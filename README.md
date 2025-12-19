@@ -1,6 +1,37 @@
 # FuelRx
 
-AI-powered meal planning for CrossFit athletes. FuelRx generates personalized weekly meal plans optimized for your macros, training schedule, and dietary preferences.
+**"Your week of food, figured out."**
+
+FuelRx is a convenience app that takes the mental load out of eating well. We help CrossFit athletes answer one question each week: *"What should I buy and cook to fuel my training?"* — with AI-generated plans refined by a community of real athletes sharing what actually works.
+
+We are not a tracking app. We don't ask users to log meals, count calories daily, or maintain streaks. Instead, we deliver a complete system — meal plan, grocery list, and prep game plan — so athletes can stop thinking about food and start performing.
+
+---
+
+## Core Philosophy
+
+- **Convenience over compliance** — Make healthy eating the path of least resistance
+- **Plan once, eat all week** — Minimize daily decisions
+- **Community as cookbook** — Other athletes' real meals make your planning easier
+- **No tracking guilt** — Generate, shop, eat, repeat
+
+---
+
+## The Core Loop
+
+```
+Generate Plan → Shop → Prep → Eat → Repeat
+```
+
+Every feature should make this loop faster, easier, or more enjoyable.
+
+---
+
+## The Pitch
+
+> FuelRx gives CrossFit athletes a meal plan, a grocery list, and a prep game plan — powered by AI and refined by a community of athletes who eat like you. Stop thinking about food. Start performing.
+
+---
 
 ## Overview
 
@@ -150,18 +181,179 @@ npm install -g vercel
 vercel
 ```
 
-## Roadmap
+## Feature Roadmap
 
-- [x] Basic meal plan generation
-- [x] Macro tracking
-- [x] Grocery list generation
-- [x] Meal/recipe generation
-- [ ] User authentication
-- [ ] Save/favorite meal plans
-- [ ] WOD-aware meal adjustments
-- [ ] Community recipe sharing
-- [ ] Mobile app (PWA)
-- [ ] Performance correlation tracking
+### 🔧 Meal Plan Quality Improvements
+
+**Extended Meal Memory**
+- Track meal names from the last 3-4 weeks (not just 1 week)
+- Pass to LLM as exclusion list to prevent repetition
+- Solves: "FuelRx keeps suggesting the same meals"
+
+**Variety Anchors in Prompts**
+- Instruct LLM to use 3+ different protein sources per week
+- Require 2+ cuisine styles (Mediterranean, Asian, Mexican, etc.)
+- Add seasonal hints based on current month
+
+**Ingredient-Efficient Meal Generation**
+- New user preference: "Optimize for simpler shopping"
+- When enabled, LLM designs meals around shared anchor ingredients:
+  - 2-3 core proteins (chicken breast, ground beef, salmon)
+  - 4-5 versatile vegetables (broccoli, bell peppers, spinach, sweet potatoes)
+- Meals vary in preparation but share base ingredients
+- Solves: "The grocery list is too long"
+
+**Leftover Intelligence**
+- LLM considers multi-serving meals when planning
+- "Tuesday's grilled chicken makes Wednesday's lunch salad"
+- Reduces cooking sessions and waste
+
+**WOD-Meal Pairing**
+- User inputs weekly training schedule (no gym app integration needed but could be cool to integrate with PushPress's API)
+- For each day: workout type (rest, light, moderate, heavy, intense) and time (morning, midday, evening)
+- LLM adjusts meals based on training:
+  - Rest days: Lower carbs, anti-inflammatory foods
+  - Heavy/strength days: Higher protein emphasis
+  - Intense days: Prioritize carbs, especially around workout
+- Meal timing adapts to workout time:
+  - Morning WOD → lighter breakfast, substantial post-workout meal
+  - Evening WOD → lunch as pre-fuel, dinner focused on recovery
+- Start with manual input; gym app integration (PushPress, etc.) possible later
+- Differentiator: No other meal app does this well for CrossFit
+
+---
+
+### ⚡ Convenience Features
+
+**Meal Prep Mode**
+- Transform 21 separate meals into a structured prep plan
+- "Sunday Prep Session" view showing:
+  - What to batch cook
+  - Estimated total time
+  - Which meals each prep item feeds
+- Daily view shows assembly only, not full cooking
+- High-impact differentiator
+
+**Quick Swap**
+- One tap on any meal shows 3 alternatives with similar macros
+- No regenerating the whole plan
+- Keeps plans flexible when life changes
+
+**Ingredient Substitution**
+- "Out of salmon?" → "Swap for cod, chicken thigh, or canned tuna"
+- Prevents missing ingredients from derailing the plan
+- LLM-powered, feels like magic
+
+**Costco Mode**
+- Leverage your inventory scraper
+- "Optimize my plan for what's available at Costco"
+- Match meals to actual products at user's local warehouse
+- Nobody else does this — genuine differentiator
+
+**One-Click Grocery Export**
+- Export to Instacart, Amazon Fresh, Walmart
+- Or clean shareable list for texting
+- Fewer steps between plan and groceries in kitchen
+
+---
+
+### 📸 Photo Capture ("Snap a Meal")
+
+**The Flow**
+1. User takes photo of a meal they made
+2. Claude Vision analyzes and identifies:
+   - Suggested meal name
+   - Visible ingredients with estimated portions
+   - Estimated macros
+3. User reviews, tweaks if needed, saves
+4. Optional: Share with community
+
+**Smart Matching**
+- After analysis, search existing database for similar meals
+- "This looks like Community Member's Teriyaki Bowl — use those verified macros?"
+- Turns photo into search tool, not just estimation
+
+**Low-Friction Capture**
+- "Meal Memory" — snap without committing
+- Review at week's end: "Add any of these to saved meals?"
+- Builds personal cookbook over time with zero effort
+
+---
+
+### 👥 Community Features
+
+**Guiding Principle**: Community as a smart recipe database, not a social network. Users benefit from collective wisdom without social pressure.
+
+**Passive Quality Signals**
+- Track when users keep vs. swap meals (no explicit rating needed)
+- Powers "Most-kept meals" and "Fan favorites"
+- Quality emerges from usage, not voting
+
+**Taste Twins**
+- Match users with similar macros, dietary prefs, and swap patterns
+- "Athletes like you loved these meals"
+- No following required — quiet algorithmic matching
+
+**Browse by Problem**
+- Replace endless feed with practical search:
+  - "I have 20 minutes"
+  - "I need to use chicken thighs"
+  - "Big batch Sunday prep"
+  - "Eating same lunch all week"
+  - "Something different"
+- Community feels like organized cookbook
+
+**One-Tap Plan Integration**
+- "Add to Next Week" — slot community meal into your plan
+- AI rebalances macros and updates grocery list automatically
+- "Replace All My Breakfasts" — lock in a community meal as default
+- "Steal This Week" — clone another athlete's full plan as starting point
+
+**Curated Collections**
+- "Coach Hillari's Favorites" — permanent collection adding personality
+- Guest collections from coaches or respected athletes
+- "FuelRx Verified" badge for macro-accurate community favorites
+
+**Contribution Without Pressure**
+- "Your meal helped 43 athletes this week" — warm feedback
+- Recipe remixes saved when users tweak community meals
+- Contributing feels rewarding but is never required
+
+---
+
+## What We're NOT Building
+
+- Daily logging or check-ins
+- Streak tracking or gamification
+- Calorie counting interface
+- Social feeds requiring engagement
+- Anything requiring daily app opens (this app is meant to be opened maybe once per week to help athletes plan their meals)
+
+---
+
+## Success Metrics
+
+- **Weekly active generation** — Users creating meal plans
+- **Grocery list exports** — Plans converting to shopping
+- **Swap rate** — Lower = better meal quality
+- **Community meal additions** — Plans enriched by community
+- **Time to plan** — Getting faster over time
+
+---
+
+## Priority Order (Suggested)
+
+| Phase | Features | Impact |
+|-------|----------|--------|
+| 1 | Extended meal memory, Ingredient-efficient generation | Fix current pain points |
+| 2 | Meal Prep Mode | Major differentiator |
+| 3 | Quick Swap, Ingredient Substitution | Daily convenience |
+| 4 | Snap a Meal (photo capture) | Frictionless meal saving |
+| 5 | Browse by Problem, One-tap plan integration | Community becomes useful |
+| 6 | Costco Mode, Grocery export | Shopping convenience |
+| 7 | Passive quality signals, Taste Twins | Smart recommendations |
+
+---
 
 ## Contributing
 
@@ -177,4 +369,4 @@ For questions or feedback, please open an issue on GitHub.
 
 ---
 
-Built with ❤️ for the CrossFit community
+*Built with ❤️ for athletes who'd rather lift than meal plan.*
