@@ -8,45 +8,45 @@ We are not a tracking app. We don't ask users to log meals, count calories daily
 
 ---
 
-## 📑 Table of Contents
+# 📑 Table of Contents
 
 <!-- TOC_START -->
 - [FuelRx](#fuelrx)
-  - [📑 Table of Contents](#-table-of-contents)
-  - [Core Philosophy](#core-philosophy)
-  - [The Core Loop](#the-core-loop)
-  - [The Pitch](#the-pitch)
-  - [Overview](#overview)
-  - [Features](#features)
-  - [Tech Stack](#tech-stack)
-    - [Frontend](#frontend)
-    - [Backend](#backend)
-    - [AI/ML](#aiml)
-    - [Hosting \& Deployment](#hosting--deployment)
-  - [Getting Started](#getting-started)
-    - [Prerequisites](#prerequisites)
-    - [Environment Variables](#environment-variables)
-    - [Installation](#installation)
-    - [Database Setup](#database-setup)
-  - [Project Structure](#project-structure)
-  - [Deployment](#deployment)
-    - [Deploy to Vercel](#deploy-to-vercel)
-  - [Feature Roadmap](#feature-roadmap)
-    - [🔧 Meal Plan Quality Improvements](#-meal-plan-quality-improvements)
-    - [⚡ Convenience Features](#-convenience-features)
-    - [📸 Photo Capture ("Snap a Meal")](#-photo-capture-snap-a-meal)
-    - [👥 Community Features](#-community-features)
-  - [What We're NOT Building](#what-were-not-building)
-  - [Success Metrics](#success-metrics)
+- [📑 Table of Contents](#-table-of-contents)
+- [Core Philosophy](#core-philosophy)
+- [The Core Loop](#the-core-loop)
+- [The Pitch](#the-pitch)
+- [Overview](#overview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+  - [Frontend](#frontend)
+  - [Backend](#backend)
+  - [AI/ML](#aiml)
+  - [Hosting \& Deployment](#hosting--deployment)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Environment Variables](#environment-variables)
+  - [Installation](#installation)
+  - [Database Setup](#database-setup)
+- [Project Structure](#project-structure)
+- [Deployment](#deployment)
+  - [Deploy to Vercel](#deploy-to-vercel)
+- [Feature Roadmap](#feature-roadmap)
+  - [🔧 Meal Plan Quality Improvements](#-meal-plan-quality-improvements)
+  - [⚡ Convenience Features](#-convenience-features)
+  - [📸 Photo Capture ("Snap a Meal")](#-photo-capture-snap-a-meal)
+  - [👥 Community Features](#-community-features)
   - [Priority Order (Suggested)](#priority-order-suggested)
-  - [Contributing](#contributing)
-  - [License](#license)
-  - [Contact](#contact)
+- [What We're NOT Building](#what-were-not-building)
+- [Success Metrics](#success-metrics)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact](#contact)
 <!-- TOC_END -->
 
 ---
 
-## Core Philosophy
+# Core Philosophy
 
 - **Convenience over compliance** — Make healthy eating the path of least resistance
 - **Plan once, eat all week** — Minimize daily decisions
@@ -55,7 +55,7 @@ We are not a tracking app. We don't ask users to log meals, count calories daily
 
 ---
 
-## The Core Loop
+# The Core Loop
 
 ```
 Generate Plan → Shop → Prep → Eat → Repeat
@@ -65,19 +65,19 @@ Every feature should make this loop faster, easier, or more enjoyable.
 
 ---
 
-## The Pitch
+# The Pitch
 
 > FuelRx gives CrossFit athletes a meal plan, a grocery list, and a prep game plan — powered by AI and refined by a community of athletes who eat like you. Stop thinking about food. Start performing.
 
 ---
 
-## Overview
+# Overview
 
 FuelRx helps CrossFit athletes take the guesswork out of nutrition. Answer a few questions about your macro targets and preferences, and get a full week of meal plans designed to fuel your training—complete with recipes, macro breakdowns, and grocery lists.
 
 Built for athletes who know nutrition matters but struggle with meal planning and prep due to time constraints or decision fatigue.
 
-## Features
+# Features
 
 - **Personalized Macro Targeting**: Input your specific protein, carb, fat, and calorie goals
 - **AI-Generated Meal Plans**: Weekly meal plans created using Claude AI based on your preferences
@@ -87,15 +87,15 @@ Built for athletes who know nutrition matters but struggle with meal planning an
 - **Auto-Generated Grocery Lists**: Shop efficiently with categorized ingredient lists
 - **WOD-Aware Nutrition** (planned): Adjust meals based on workout intensity
 
-## Tech Stack
+# Tech Stack
 
-### Frontend
+## Frontend
 - **Next.js** - React framework with server-side rendering, routing, and optimized deployment
 - **React** - Component-based UI library
 - **Tailwind CSS** - Utility-first CSS framework for styling
 - **TypeScript** - Type-safe JavaScript for better developer experience
 
-### Backend
+## Backend
 - **Supabase** (Free Tier)
   - PostgreSQL database (500MB storage)
   - Built-in authentication
@@ -103,28 +103,28 @@ Built for athletes who know nutrition matters but struggle with meal planning an
   - Real-time subscriptions
   - 1GB file storage, 2GB bandwidth/month
 
-### AI/ML
+## AI/ML
 - **Claude API** (Anthropic)
   - Generates personalized meal plans
   - Pay-as-you-go pricing (~$3 per million input tokens)
   - Powered by Claude Sonnet for optimal cost/performance
 
-### Hosting & Deployment
+## Hosting & Deployment
 - **Vercel** (Free Tier)
   - Automatic deployments from Git
   - Edge network for fast global delivery
   - 100GB bandwidth/month
   - Built-in CI/CD
 
-## Getting Started
+# Getting Started
 
-### Prerequisites
+## Prerequisites
 - Node.js 18+ and npm/yarn
 - Supabase account
 - Anthropic API key for Claude
 - Vercel account (for deployment)
 
-### Environment Variables
+## Environment Variables
 
 Create a `.env.local` file in the root directory:
 
@@ -137,7 +137,7 @@ SUPABASE_API_KEY=your_supabase_anon_key
 ANTHROPIC_API_KEY=your_anthropic_api_key
 ```
 
-### Installation
+## Installation
 
 ```bash
 # Clone the repository
@@ -153,7 +153,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) to view the app.
 
-### Database Setup
+## Database Setup
 
 Run the SQL migrations in your Supabase project (see `/supabase/migrations` folder).
 
@@ -185,7 +185,7 @@ supabase migration up
 ```
 
 
-## Project Structure
+# Project Structure
 
 ```
 fuel-rx/
@@ -204,9 +204,9 @@ fuel-rx/
 └── styles/               # Global styles
 ```
 
-## Deployment
+# Deployment
 
-### Deploy to Vercel
+## Deploy to Vercel
 
 1. Push your code to GitHub
 2. Import project in Vercel dashboard
@@ -219,9 +219,9 @@ npm install -g vercel
 vercel
 ```
 
-## Feature Roadmap
+# Feature Roadmap
 
-### 🔧 Meal Plan Quality Improvements
+## 🔧 Meal Plan Quality Improvements
 
 **Extended Meal Memory**
 - Track meal names from the last 3-4 weeks (not just 1 week)
@@ -261,7 +261,7 @@ vercel
 
 ---
 
-### ⚡ Convenience Features
+## ⚡ Convenience Features
 
 **Meal Prep Mode**
 - Transform 21 separate meals into a structured prep plan
@@ -295,7 +295,7 @@ vercel
 
 ---
 
-### 📸 Photo Capture ("Snap a Meal")
+## 📸 Photo Capture ("Snap a Meal")
 
 **The Flow**
 1. User takes photo of a meal they made
@@ -318,7 +318,7 @@ vercel
 
 ---
 
-### 👥 Community Features
+## 👥 Community Features
 
 **Guiding Principle**: Community as a smart recipe database, not a social network. Users benefit from collective wisdom without social pressure.
 
@@ -359,26 +359,6 @@ vercel
 
 ---
 
-## What We're NOT Building
-
-- Daily logging or check-ins
-- Streak tracking or gamification
-- Calorie counting interface
-- Social feeds requiring engagement
-- Anything requiring daily app opens (this app is meant to be opened maybe once per week to help athletes plan their meals)
-
----
-
-## Success Metrics
-
-- **Weekly active generation** — Users creating meal plans
-- **Grocery list exports** — Plans converting to shopping
-- **Swap rate** — Lower = better meal quality
-- **Community meal additions** — Plans enriched by community
-- **Time to plan** — Getting faster over time
-
----
-
 ## Priority Order (Suggested)
 
 | Phase | Features | Impact |
@@ -393,15 +373,35 @@ vercel
 
 ---
 
-## Contributing
+# What We're NOT Building
+
+- Daily logging or check-ins
+- Streak tracking or gamification
+- Calorie counting interface
+- Social feeds requiring engagement
+- Anything requiring daily app opens (this app is meant to be opened maybe once per week to help athletes plan their meals)
+
+---
+
+# Success Metrics
+
+- **Weekly active generation** — Users creating meal plans
+- **Grocery list exports** — Plans converting to shopping
+- **Swap rate** — Lower = better meal quality
+- **Community meal additions** — Plans enriched by community
+- **Time to plan** — Getting faster over time
+
+---
+
+# Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## License
+# License
 
 MIT License - see LICENSE file for details
 
-## Contact
+# Contact
 
 For questions or feedback, please open an issue on GitHub.
 
