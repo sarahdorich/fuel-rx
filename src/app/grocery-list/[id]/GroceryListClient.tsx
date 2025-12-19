@@ -2,12 +2,14 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import type { Ingredient } from '@/lib/types'
+import type { Ingredient, CoreIngredients } from '@/lib/types'
+import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 
 interface Props {
   mealPlanId: string
   weekStartDate: string
   groceryList: Ingredient[]
+  coreIngredients?: CoreIngredients | null
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -22,7 +24,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 const CATEGORY_ORDER = ['produce', 'protein', 'dairy', 'grains', 'pantry', 'frozen', 'other']
 
-export default function GroceryListClient({ mealPlanId, weekStartDate, groceryList }: Props) {
+export default function GroceryListClient({ mealPlanId, weekStartDate, groceryList, coreIngredients }: Props) {
   const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set())
 
   // Group items by category
@@ -93,6 +95,13 @@ export default function GroceryListClient({ mealPlanId, weekStartDate, groceryLi
             })}
           </p>
         </div>
+
+        {/* Core Ingredients Summary */}
+        {coreIngredients && (
+          <div className="mb-6">
+            <CoreIngredientsCard coreIngredients={coreIngredients} />
+          </div>
+        )}
 
         {/* Progress */}
         <div className="card mb-6">

@@ -42,6 +42,7 @@ export interface UserProfile {
   meals_per_day: MealsPerDay;
   prep_time: PrepTime;
   meal_consistency_prefs: MealConsistencyPrefs;
+  ingredient_variety_prefs: IngredientVarietyPrefs;
   social_feed_enabled: boolean;
   display_name: string | null;
   profile_photo_url: string | null;
@@ -110,6 +111,7 @@ export interface OnboardingData {
   meals_per_day: MealsPerDay;
   prep_time: PrepTime;
   meal_consistency_prefs: MealConsistencyPrefs;
+  ingredient_variety_prefs: IngredientVarietyPrefs;
   profile_photo_url: string | null;
 }
 
@@ -223,4 +225,135 @@ export interface SocialUser {
   follower_count?: number;
   following_count?: number;
   post_count?: number;
+}
+
+// ============================================
+// Two-Stage Generation & Prep Mode Types
+// ============================================
+
+// Ingredient categories for core ingredient selection
+export type IngredientCategory = 'proteins' | 'vegetables' | 'fruits' | 'grains' | 'fats' | 'pantry';
+
+// User preferences for how many ingredients per category
+export interface IngredientVarietyPrefs {
+  proteins: number;
+  vegetables: number;
+  fruits: number;
+  grains: number;
+  fats: number;
+  pantry: number;
+}
+
+export const DEFAULT_INGREDIENT_VARIETY_PREFS: IngredientVarietyPrefs = {
+  proteins: 3,
+  vegetables: 5,
+  fruits: 2,
+  grains: 2,
+  fats: 3,
+  pantry: 3,
+};
+
+export const INGREDIENT_CATEGORY_LABELS: Record<IngredientCategory, string> = {
+  proteins: 'Proteins',
+  vegetables: 'Vegetables',
+  fruits: 'Fruits',
+  grains: 'Grains & Starches',
+  fats: 'Healthy Fats',
+  pantry: 'Pantry Staples',
+};
+
+export const INGREDIENT_VARIETY_RANGES: Record<IngredientCategory, { min: number; max: number }> = {
+  proteins: { min: 1, max: 5 },
+  vegetables: { min: 2, max: 8 },
+  fruits: { min: 1, max: 5 },
+  grains: { min: 1, max: 4 },
+  fats: { min: 1, max: 5 },
+  pantry: { min: 1, max: 5 },
+};
+
+// Core ingredients selected in Stage 1
+export interface CoreIngredients {
+  proteins: string[];
+  vegetables: string[];
+  fruits: string[];
+  grains: string[];
+  fats: string[];
+  pantry: string[];
+}
+
+// Individual ingredient stored in meal_plan_ingredients table
+export interface MealPlanIngredient {
+  id: string;
+  meal_plan_id: string;
+  category: IngredientCategory;
+  ingredient_name: string;
+  quantity: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+// Day reference for prep mode
+export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+
+// Prep item in a prep session
+export interface PrepItem {
+  item: string;
+  quantity: string;
+  ingredients?: string[];
+  method?: string;
+  storage: string;
+  feeds: Array<{ day: DayOfWeek; meal: MealType }>;
+}
+
+// Daily assembly instructions for a single day
+export interface DailyAssemblyDay {
+  breakfast?: { time: string; instructions: string };
+  lunch?: { time: string; instructions: string };
+  dinner?: { time: string; instructions: string };
+  snack?: { time: string; instructions: string };
+}
+
+// Daily assembly for all days
+export type DailyAssembly = Partial<Record<DayOfWeek, DailyAssemblyDay>>;
+
+// Prep session stored in prep_sessions table
+export interface PrepSession {
+  id: string;
+  meal_plan_id: string;
+  session_name: string;
+  session_order: number;
+  estimated_minutes: number | null;
+  prep_items: PrepItem[];
+  feeds_meals: Array<{ day: DayOfWeek; meal: MealType }>;
+  instructions: string | null;
+  daily_assembly: DailyAssembly | null;
+  created_at: string;
+}
+
+// Extended meal plan with two-stage generation data
+export interface MealPlanWithPrepMode extends MealPlan {
+  core_ingredients: CoreIngredients | null;
+  prep_sessions?: PrepSession[];
+}
+
+// Response from Stage 1 LLM call
+export interface Stage1Response {
+  proteins: string[];
+  vegetables: string[];
+  fruits: string[];
+  grains: string[];
+  fats: string[];
+  pantry: string[];
+}
+
+// Response from Stage 3 (Prep Mode) LLM call
+export interface PrepModeResponse {
+  prepSessions: Array<{
+    sessionName: string;
+    sessionOrder: number;
+    estimatedMinutes: number;
+    instructions: string;
+    prepItems: PrepItem[];
+  }>;
+  dailyAssembly: DailyAssembly;
 }
