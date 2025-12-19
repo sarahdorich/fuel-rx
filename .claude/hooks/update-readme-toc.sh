@@ -2,12 +2,23 @@
 
 # Hook: update-readme-toc.sh
 # Automatically generates and updates the table of contents in README.md
-# Triggers: After saving README.md
+# Triggers: After Write tool is used (PostToolUse hook)
 
 set -euo pipefail
 
+# Read JSON from stdin
+HOOK_DATA=$(cat)
+
+# Extract file path from tool_input using jq (or grep if jq not available)
+if command -v jq &> /dev/null; then
+    FILE_PATH=$(echo "$HOOK_DATA" | jq -r '.tool_input.file_path // empty')
+else
+    # Fallback to grep/sed if jq not available
+    FILE_PATH=$(echo "$HOOK_DATA" | grep -o '"file_path":"[^"]*"' | head -1 | sed 's/"file_path":"\([^"]*\)"/\1/')
+fi
+
 # Only run for README.md
-if [[ "${CHANGED_FILE}" != *"README.md" ]]; then
+if [[ -z "$FILE_PATH" ]] || [[ "$FILE_PATH" != *"README.md" ]]; then
     exit 0
 fi
 

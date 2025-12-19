@@ -8,6 +8,44 @@ We are not a tracking app. We don't ask users to log meals, count calories daily
 
 ---
 
+## 📑 Table of Contents
+
+<!-- TOC_START -->
+- [FuelRx](#fuelrx)
+  - [📑 Table of Contents](#-table-of-contents)
+  - [Core Philosophy](#core-philosophy)
+  - [The Core Loop](#the-core-loop)
+  - [The Pitch](#the-pitch)
+  - [Overview](#overview)
+  - [Features](#features)
+  - [Tech Stack](#tech-stack)
+    - [Frontend](#frontend)
+    - [Backend](#backend)
+    - [AI/ML](#aiml)
+    - [Hosting \& Deployment](#hosting--deployment)
+  - [Getting Started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Environment Variables](#environment-variables)
+    - [Installation](#installation)
+    - [Database Setup](#database-setup)
+  - [Project Structure](#project-structure)
+  - [Deployment](#deployment)
+    - [Deploy to Vercel](#deploy-to-vercel)
+  - [Feature Roadmap](#feature-roadmap)
+    - [🔧 Meal Plan Quality Improvements](#-meal-plan-quality-improvements)
+    - [⚡ Convenience Features](#-convenience-features)
+    - [📸 Photo Capture ("Snap a Meal")](#-photo-capture-snap-a-meal)
+    - [👥 Community Features](#-community-features)
+  - [What We're NOT Building](#what-were-not-building)
+  - [Success Metrics](#success-metrics)
+  - [Priority Order (Suggested)](#priority-order-suggested)
+  - [Contributing](#contributing)
+  - [License](#license)
+  - [Contact](#contact)
+<!-- TOC_END -->
+
+---
+
 ## Core Philosophy
 
 - **Convenience over compliance** — Make healthy eating the path of least resistance

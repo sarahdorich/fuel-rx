@@ -17,10 +17,27 @@
     "deny": []
   },
   "hooks": {
-    "afterFileSave": {
-      "command": "bash .claude/hooks/update-readme-toc.sh",
-      "blocking": true,
-      "description": "Update README TOC on save"
-    }
+    "PostToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/update-readme-toc.sh",
+            "timeout": 30
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/update-readme-toc.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
   }
 }
