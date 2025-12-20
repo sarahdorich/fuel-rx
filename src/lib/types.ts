@@ -15,6 +15,62 @@ export type MealConsistency = 'consistent' | 'varied';
 
 export type MealConsistencyPrefs = Record<MealType, MealConsistency>;
 
+// Prep style preferences
+export type PrepStyle = 'traditional_batch' | 'night_before' | 'day_of' | 'mixed';
+
+export type MealComplexity = 'quick_assembly' | 'minimal_prep' | 'full_recipe';
+
+export const PREP_STYLE_LABELS: Record<PrepStyle, { title: string; description: string }> = {
+  traditional_batch: {
+    title: 'Traditional Batch Prep',
+    description: 'Prep all meals on Sunday (or one day per week)',
+  },
+  night_before: {
+    title: 'Night Before',
+    description: "Prep tomorrow's meals the night before",
+  },
+  day_of: {
+    title: 'Day-Of Fresh Cooking',
+    description: 'Cook each meal fresh when you eat it',
+  },
+  mixed: {
+    title: 'Mixed/Flexible',
+    description: 'Combination: batch some proteins, simple breakfasts/lunches, fresh dinners',
+  },
+};
+
+export const MEAL_COMPLEXITY_LABELS: Record<MealComplexity, { title: string; time: string; example: string }> = {
+  quick_assembly: {
+    title: 'Quick Assembly',
+    time: '2-10 min',
+    example: '2 eggs, avocado, tomatoes',
+  },
+  minimal_prep: {
+    title: 'Minimal Prep',
+    time: '10-20 min',
+    example: 'Veggie omelet, overnight oats',
+  },
+  full_recipe: {
+    title: 'Full Recipe',
+    time: '20-45 min',
+    example: 'Breakfast burrito bowl, frittata',
+  },
+};
+
+export const DEFAULT_PREP_STYLE: PrepStyle = 'mixed';
+
+export interface MealComplexityPrefs {
+  breakfast: MealComplexity;
+  lunch: MealComplexity;
+  dinner: MealComplexity;
+}
+
+export const DEFAULT_MEAL_COMPLEXITY_PREFS: MealComplexityPrefs = {
+  breakfast: 'minimal_prep',
+  lunch: 'minimal_prep',
+  dinner: 'full_recipe',
+};
+
 export const DEFAULT_MEAL_CONSISTENCY_PREFS: MealConsistencyPrefs = {
   breakfast: 'varied',
   lunch: 'varied',
@@ -42,6 +98,12 @@ export interface UserProfile {
   meals_per_day: MealsPerDay;
   prep_time: PrepTime;
   meal_consistency_prefs: MealConsistencyPrefs;
+  ingredient_variety_prefs: IngredientVarietyPrefs;
+  // Prep style preferences
+  prep_style: PrepStyle;
+  breakfast_complexity: MealComplexity;
+  lunch_complexity: MealComplexity;
+  dinner_complexity: MealComplexity;
   social_feed_enabled: boolean;
   display_name: string | null;
   profile_photo_url: string | null;
@@ -54,6 +116,19 @@ export interface Ingredient {
   amount: string;
   unit: string;
   category: 'produce' | 'protein' | 'dairy' | 'grains' | 'pantry' | 'frozen' | 'other';
+  // Optional nutrition data (populated by LLM, can be overridden by user)
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+}
+
+// Extended ingredient with required nutrition data
+export interface IngredientWithNutrition extends Omit<Ingredient, 'calories' | 'protein' | 'carbs' | 'fat'> {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
 }
 
 export interface Macros {
@@ -68,6 +143,16 @@ export interface Meal {
   type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
   prep_time_minutes: number;
   ingredients: Ingredient[];
+  instructions: string[];
+  macros: Macros;
+}
+
+// Meal with ingredient-level nutrition data
+export interface MealWithIngredientNutrition {
+  name: string;
+  type: 'breakfast' | 'lunch' | 'dinner' | 'snack';
+  prep_time_minutes: number;
+  ingredients: IngredientWithNutrition[];
   instructions: string[];
   macros: Macros;
 }
@@ -110,6 +195,12 @@ export interface OnboardingData {
   meals_per_day: MealsPerDay;
   prep_time: PrepTime;
   meal_consistency_prefs: MealConsistencyPrefs;
+  ingredient_variety_prefs: IngredientVarietyPrefs;
+  // Prep style preferences
+  prep_style: PrepStyle;
+  breakfast_complexity: MealComplexity;
+  lunch_complexity: MealComplexity;
+  dinner_complexity: MealComplexity;
   profile_photo_url: string | null;
 }
 
@@ -223,4 +314,219 @@ export interface SocialUser {
   follower_count?: number;
   following_count?: number;
   post_count?: number;
+}
+
+// ============================================
+// Two-Stage Generation & Prep Mode Types
+// ============================================
+
+// Ingredient categories for core ingredient selection
+export type IngredientCategory = 'proteins' | 'vegetables' | 'fruits' | 'grains' | 'fats' | 'pantry';
+
+// User preferences for how many ingredients per category
+export interface IngredientVarietyPrefs {
+  proteins: number;
+  vegetables: number;
+  fruits: number;
+  grains: number;
+  fats: number;
+  pantry: number;
+}
+
+export const DEFAULT_INGREDIENT_VARIETY_PREFS: IngredientVarietyPrefs = {
+  proteins: 3,
+  vegetables: 5,
+  fruits: 2,
+  grains: 2,
+  fats: 3,
+  pantry: 3,
+};
+
+export const INGREDIENT_CATEGORY_LABELS: Record<IngredientCategory, string> = {
+  proteins: 'Proteins',
+  vegetables: 'Vegetables',
+  fruits: 'Fruits',
+  grains: 'Grains & Starches',
+  fats: 'Healthy Fats',
+  pantry: 'Pantry Staples',
+};
+
+export const INGREDIENT_VARIETY_RANGES: Record<IngredientCategory, { min: number; max: number }> = {
+  proteins: { min: 1, max: 5 },
+  vegetables: { min: 2, max: 8 },
+  fruits: { min: 1, max: 5 },
+  grains: { min: 1, max: 4 },
+  fats: { min: 1, max: 5 },
+  pantry: { min: 1, max: 5 },
+};
+
+// Core ingredients selected in Stage 1
+export interface CoreIngredients {
+  proteins: string[];
+  vegetables: string[];
+  fruits: string[];
+  grains: string[];
+  fats: string[];
+  pantry: string[];
+}
+
+// Individual ingredient stored in meal_plan_ingredients table
+export interface MealPlanIngredient {
+  id: string;
+  meal_plan_id: string;
+  category: IngredientCategory;
+  ingredient_name: string;
+  quantity: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+// Day reference for prep mode
+export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+
+// Prep item in a prep session
+export interface PrepItem {
+  item: string;
+  quantity: string;
+  ingredients?: string[];
+  method?: string;
+  storage: string;
+  feeds: Array<{ day: DayOfWeek; meal: MealType }>;
+}
+
+// Daily assembly instructions for a single day
+export interface DailyAssemblyDay {
+  breakfast?: { time: string; instructions: string };
+  lunch?: { time: string; instructions: string };
+  dinner?: { time: string; instructions: string };
+  snack?: { time: string; instructions: string };
+}
+
+// Daily assembly for all days
+export type DailyAssembly = Partial<Record<DayOfWeek, DailyAssemblyDay>>;
+
+// Prep task for the new collapsible prep view
+export interface PrepTask {
+  id: string;
+  description: string;
+  estimated_minutes: number;
+  meal_ids: string[];
+  completed: boolean;
+}
+
+// Session type for prep scheduling
+export type PrepSessionType = 'weekly_batch' | 'night_before' | 'day_of_morning' | 'day_of_dinner';
+
+// Prep session stored in prep_sessions table
+export interface PrepSession {
+  id: string;
+  meal_plan_id: string;
+  session_name: string;
+  session_order: number;
+  estimated_minutes: number | null;
+  prep_items: PrepItem[];
+  feeds_meals: Array<{ day: DayOfWeek; meal: MealType }>;
+  instructions: string | null;
+  daily_assembly: DailyAssembly | null;
+  // New fields for collapsible prep view
+  session_type: PrepSessionType;
+  session_day: DayOfWeek | null;
+  session_time_of_day: 'morning' | 'afternoon' | 'night' | null;
+  prep_for_date: string | null;
+  prep_tasks: { tasks: PrepTask[] };
+  display_order: number;
+  created_at: string;
+  updated_at?: string;
+}
+
+// Extended meal plan with two-stage generation data
+export interface MealPlanWithPrepMode extends MealPlan {
+  core_ingredients: CoreIngredients | null;
+  prep_sessions?: PrepSession[];
+}
+
+// Response from Stage 1 LLM call
+export interface Stage1Response {
+  proteins: string[];
+  vegetables: string[];
+  fruits: string[];
+  grains: string[];
+  fats: string[];
+  pantry: string[];
+}
+
+// Response from Stage 3 (Prep Mode) LLM call
+export interface PrepModeResponse {
+  prepSessions: Array<{
+    sessionName: string;
+    sessionOrder: number;
+    estimatedMinutes: number;
+    instructions: string;
+    prepItems: PrepItem[];
+  }>;
+  dailyAssembly: DailyAssembly;
+}
+
+// ============================================
+// Ingredient Nutrition Cache Types
+// ============================================
+
+export interface IngredientNutrition {
+  id: string;
+  name: string;
+  name_normalized: string;
+  serving_size: number;
+  serving_unit: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber?: number;
+  sugar?: number;
+  sodium?: number;
+  source: 'llm_estimated' | 'usda' | 'user_corrected';
+  usda_fdc_id?: string;
+  confidence_score?: number;
+  validated?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// User override for ingredient nutrition (pending expert validation)
+export type IngredientOverrideValidationStatus = 'pending' | 'approved' | 'rejected';
+
+export interface IngredientNutritionUserOverride {
+  id: string;
+  user_id: string;
+  ingredient_name: string;
+  ingredient_name_normalized: string;
+  serving_size: number;
+  serving_unit: string;
+  original_calories?: number;
+  original_protein?: number;
+  original_carbs?: number;
+  original_fat?: number;
+  override_calories: number;
+  override_protein: number;
+  override_carbs: number;
+  override_fat: number;
+  meal_plan_id?: string;
+  meal_name?: string;
+  validation_status: IngredientOverrideValidationStatus;
+  validated_by?: string;
+  validated_at?: string;
+  validation_notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// Core ingredient with quantity estimation for weekly calorie targets
+export interface CoreIngredientWithQuantity {
+  name: string;
+  category: IngredientCategory;
+  weeklyQuantity: string; // e.g., "4 lbs", "2 dozen"
+  estimatedWeeklyCalories: number;
+  estimatedWeeklyProtein: number;
+  estimatedWeeklyCarbs: number;
+  estimatedWeeklyFat: number;
 }

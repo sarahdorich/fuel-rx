@@ -17,7 +17,7 @@ export default async function GroceryListPage({ params }: Props) {
 
   const { data: mealPlan, error } = await supabase
     .from('meal_plans')
-    .select('id, week_start_date, grocery_list')
+    .select('id, week_start_date, grocery_list, core_ingredients')
     .eq('id', id)
     .eq('user_id', user.id)
     .single()
@@ -31,6 +31,7 @@ export default async function GroceryListPage({ params }: Props) {
       mealPlanId={mealPlan.id}
       weekStartDate={mealPlan.week_start_date}
       groceryList={mealPlan.grocery_list}
+      coreIngredients={mealPlan.core_ingredients}
     />
   )
 }

@@ -36,6 +36,7 @@ export default async function MealPlanPage({ params }: Props) {
         grocery_list: mealPlan.grocery_list,
         is_favorite: mealPlan.is_favorite,
         created_at: mealPlan.created_at,
+        core_ingredients: mealPlan.core_ingredients,
       }}
     />
   )

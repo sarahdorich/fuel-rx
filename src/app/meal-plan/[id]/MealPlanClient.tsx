@@ -4,7 +4,18 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros } from '@/lib/types'
+import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros, CoreIngredients, PrepModeResponse, DailyAssembly, IngredientNutritionUserOverride } from '@/lib/types'
+import PrepModeView from '@/components/PrepModeView'
+import CoreIngredientsCard from '@/components/CoreIngredientsCard'
+
+interface PrepSessionData {
+  id?: string
+  sessionName: string
+  sessionOrder: number
+  estimatedMinutes: number
+  instructions: string
+  prepItems: PrepModeResponse['prepSessions'][0]['prepItems']
+}
 
 interface Props {
   mealPlan: {
@@ -15,6 +26,7 @@ interface Props {
     grocery_list: Ingredient[]
     is_favorite: boolean
     created_at: string
+    core_ingredients?: CoreIngredients | null
   }
 }
 
@@ -51,6 +63,14 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   // Meal preferences state
   const [mealPreferences, setMealPreferences] = useState<MealPreferencesMap>({})
 
+  // View mode state (meal view vs prep view)
+  const [viewMode, setViewMode] = useState<'meals' | 'prep'>('meals')
+
+  // Prep sessions state
+  const [prepSessions, setPrepSessions] = useState<PrepSessionData[]>([])
+  const [dailyAssembly, setDailyAssembly] = useState<DailyAssembly>({})
+  const [loadingPrepMode, setLoadingPrepMode] = useState(false)
+
   // Load meal preferences on mount
   useEffect(() => {
     const loadMealPreferences = async () => {
@@ -72,6 +92,27 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     }
     loadMealPreferences()
   }, [supabase])
+
+  // Load prep sessions when switching to prep view
+  useEffect(() => {
+    const loadPrepSessions = async () => {
+      if (viewMode !== 'prep' || prepSessions.length > 0) return
+
+      setLoadingPrepMode(true)
+      try {
+        const response = await fetch(`/api/meal-plans/${mealPlan.id}/prep-mode`)
+        if (response.ok) {
+          const data = await response.json()
+          setPrepSessions(data.prepSessions || [])
+          setDailyAssembly(data.dailyAssembly || {})
+        }
+      } catch (error) {
+        console.error('Error loading prep sessions:', error)
+      }
+      setLoadingPrepMode(false)
+    }
+    loadPrepSessions()
+  }, [viewMode, mealPlan.id, prepSessions.length])
 
   const currentDayPlan = mealPlan.days.find(d => d.day === selectedDay)
 
@@ -149,6 +190,90 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
           protein: newMacros.protein,
           carbs: newMacros.carbs,
           fat: newMacros.fat,
+        }, {
+          onConflict: 'user_id,meal_name',
+        })
+    }
+
+    setMealPlan({ ...mealPlan, days: updatedDays })
+    return true
+  }
+
+  const updateIngredientInMeal = async (
+    dayIndex: number,
+    mealIndex: number,
+    ingredientIndex: number,
+    newIngredient: Ingredient
+  ) => {
+    const updatedDays = [...mealPlan.days]
+    const day = updatedDays[dayIndex]
+    const meal = day.meals[mealIndex]
+
+    // Update the ingredient
+    meal.ingredients[ingredientIndex] = { ...newIngredient }
+
+    // Recalculate meal macros from ingredient totals
+    const newMealMacros = meal.ingredients.reduce(
+      (totals, ing) => ({
+        calories: totals.calories + (ing.calories || 0),
+        protein: totals.protein + (ing.protein || 0),
+        carbs: totals.carbs + (ing.carbs || 0),
+        fat: totals.fat + (ing.fat || 0),
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    )
+
+    // Round to reasonable precision
+    meal.macros = {
+      calories: Math.round(newMealMacros.calories),
+      protein: Math.round(newMealMacros.protein * 10) / 10,
+      carbs: Math.round(newMealMacros.carbs * 10) / 10,
+      fat: Math.round(newMealMacros.fat * 10) / 10,
+    }
+
+    // Recalculate daily totals
+    day.daily_totals = day.meals.reduce(
+      (totals, m) => ({
+        calories: totals.calories + m.macros.calories,
+        protein: totals.protein + m.macros.protein,
+        carbs: totals.carbs + m.macros.carbs,
+        fat: totals.fat + m.macros.fat,
+      }),
+      { calories: 0, protein: 0, carbs: 0, fat: 0 }
+    )
+
+    // Save to database
+    const { error: planError } = await supabase
+      .from('meal_plans')
+      .update({ plan_data: updatedDays })
+      .eq('id', mealPlan.id)
+
+    if (planError) {
+      console.error('Error saving meal plan:', planError)
+      return false
+    }
+
+    // Also update validated_meals_by_user with the new macros and ingredient nutrition
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user) {
+      await supabase
+        .from('validated_meals_by_user')
+        .upsert({
+          user_id: user.id,
+          meal_name: meal.name,
+          calories: meal.macros.calories,
+          protein: meal.macros.protein,
+          carbs: meal.macros.carbs,
+          fat: meal.macros.fat,
+          ingredients: meal.ingredients.map(ing => ({
+            name: ing.name,
+            amount: ing.amount,
+            unit: ing.unit,
+            calories: ing.calories || 0,
+            protein: ing.protein || 0,
+            carbs: ing.carbs || 0,
+            fat: ing.fat || 0,
+          })),
         }, {
           onConflict: 'user_id,meal_name',
         })
@@ -302,89 +427,150 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
               {isFavorite ? 'Favorited' : 'Favorite'}
             </button>
             <Link
+              href={`/prep-view/${mealPlan.id}`}
+              className="btn-outline"
+            >
+              Prep Schedule
+            </Link>
+            <Link
               href={`/grocery-list/${mealPlan.id}`}
               className="btn-primary"
             >
-              View Grocery List
+              Grocery List
             </Link>
           </div>
         </div>
 
-        {/* Day selector */}
-        <div className="flex overflow-x-auto gap-2 mb-6 pb-2">
-          {mealPlan.days.map((day) => (
-            <button
-              key={day.day}
-              onClick={() => setSelectedDay(day.day)}
-              className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                selectedDay === day.day
-                  ? 'bg-primary-600 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              {DAY_LABELS[day.day]}
-            </button>
-          ))}
+        {/* View Mode Toggle */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setViewMode('meals')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+              viewMode === 'meals'
+                ? 'bg-primary-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            Meal View
+          </button>
+          <button
+            onClick={() => setViewMode('prep')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+              viewMode === 'prep'
+                ? 'bg-primary-600 text-white'
+                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+            }`}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+            </svg>
+            Prep View
+          </button>
         </div>
 
-        {/* Daily totals */}
-        {currentDayPlan && (
-          <div className="card mb-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">
-              {DAY_LABELS[selectedDay]} Daily Totals
-            </h3>
-            <div className="grid grid-cols-4 gap-4 text-center">
-              <div>
-                <p className="text-2xl font-bold text-primary-600">
-                  {currentDayPlan.daily_totals.calories}
-                </p>
-                <p className="text-sm text-gray-500">Calories</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-blue-600">
-                  {currentDayPlan.daily_totals.protein}g
-                </p>
-                <p className="text-sm text-gray-500">Protein</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-orange-600">
-                  {currentDayPlan.daily_totals.carbs}g
-                </p>
-                <p className="text-sm text-gray-500">Carbs</p>
-              </div>
-              <div>
-                <p className="text-2xl font-bold text-purple-600">
-                  {currentDayPlan.daily_totals.fat}g
-                </p>
-                <p className="text-sm text-gray-500">Fat</p>
-              </div>
-            </div>
+        {/* Core Ingredients (shown in both views) */}
+        {mealPlan.core_ingredients && (
+          <div className="mb-6">
+            <CoreIngredientsCard coreIngredients={mealPlan.core_ingredients} />
           </div>
         )}
 
-        {/* Meals */}
-        <div className="space-y-4">
-          {sortedMeals.map((meal, index) => {
-            const dayIndex = mealPlan.days.findIndex(d => d.day === selectedDay)
-            const mealIndex = currentDayPlan?.meals.findIndex(m => m === meal) ?? index
-            return (
-              <MealCard
-                key={`${meal.name}-${index}`}
-                meal={meal}
-                isExpanded={expandedMeal === `${meal.name}-${index}`}
-                onToggle={() =>
-                  setExpandedMeal(
-                    expandedMeal === `${meal.name}-${index}` ? null : `${meal.name}-${index}`
-                  )
-                }
-                preference={mealPreferences[meal.name]}
-                onLike={() => toggleMealPreference(meal.name, 'liked')}
-                onDislike={() => toggleMealPreference(meal.name, 'disliked')}
-                onMacrosChange={(newMacros) => updateMealMacros(dayIndex, mealIndex, newMacros)}
-              />
-            )
-          })}
-        </div>
+        {viewMode === 'meals' ? (
+          <>
+            {/* Day selector */}
+            <div className="flex overflow-x-auto gap-2 mb-6 pb-2">
+              {mealPlan.days.map((day) => (
+                <button
+                  key={day.day}
+                  onClick={() => setSelectedDay(day.day)}
+                  className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
+                    selectedDay === day.day
+                      ? 'bg-primary-600 text-white'
+                      : 'bg-white text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {DAY_LABELS[day.day]}
+                </button>
+              ))}
+            </div>
+
+            {/* Daily totals */}
+            {currentDayPlan && (
+              <div className="card mb-6">
+                <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                  {DAY_LABELS[selectedDay]} Daily Totals
+                </h3>
+                <div className="grid grid-cols-4 gap-4 text-center">
+                  <div>
+                    <p className="text-2xl font-bold text-primary-600">
+                      {Math.round(currentDayPlan.daily_totals.calories)}
+                    </p>
+                    <p className="text-sm text-gray-500">Calories</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {Math.round(currentDayPlan.daily_totals.protein)}g
+                    </p>
+                    <p className="text-sm text-gray-500">Protein</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-orange-600">
+                      {Math.round(currentDayPlan.daily_totals.carbs)}g
+                    </p>
+                    <p className="text-sm text-gray-500">Carbs</p>
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold text-purple-600">
+                      {Math.round(currentDayPlan.daily_totals.fat)}g
+                    </p>
+                    <p className="text-sm text-gray-500">Fat</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Meals */}
+            <div className="space-y-4">
+              {sortedMeals.map((meal, index) => {
+                const dayIndex = mealPlan.days.findIndex(d => d.day === selectedDay)
+                const mealIndex = currentDayPlan?.meals.findIndex(m => m === meal) ?? index
+                return (
+                  <MealCard
+                    key={`${meal.name}-${index}`}
+                    meal={meal}
+                    isExpanded={expandedMeal === `${meal.name}-${index}`}
+                    onToggle={() =>
+                      setExpandedMeal(
+                        expandedMeal === `${meal.name}-${index}` ? null : `${meal.name}-${index}`
+                      )
+                    }
+                    preference={mealPreferences[meal.name]}
+                    onLike={() => toggleMealPreference(meal.name, 'liked')}
+                    onDislike={() => toggleMealPreference(meal.name, 'disliked')}
+                    onMacrosChange={(newMacros) => updateMealMacros(dayIndex, mealIndex, newMacros)}
+                    onIngredientChange={(ingredientIndex, newIngredient) =>
+                      updateIngredientInMeal(dayIndex, mealIndex, ingredientIndex, newIngredient)
+                    }
+                    mealPlanId={mealPlan.id}
+                  />
+                )
+              })}
+            </div>
+          </>
+        ) : (
+          /* Prep Mode View */
+          loadingPrepMode ? (
+            <div className="card text-center py-8">
+              <div className="animate-spin w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full mx-auto mb-4" />
+              <p className="text-gray-500">Loading prep mode...</p>
+            </div>
+          ) : (
+            <PrepModeView prepSessions={prepSessions} dailyAssembly={dailyAssembly} />
+          )
+        )}
       </main>
     </div>
   )
@@ -398,6 +584,8 @@ function MealCard({
   onLike,
   onDislike,
   onMacrosChange,
+  onIngredientChange,
+  mealPlanId,
 }: {
   meal: Meal
   isExpanded: boolean
@@ -406,6 +594,8 @@ function MealCard({
   onLike: () => void
   onDislike: () => void
   onMacrosChange: (macros: Macros) => Promise<boolean>
+  onIngredientChange: (ingredientIndex: number, newIngredient: Ingredient) => Promise<boolean>
+  mealPlanId: string
 }) {
   const [isEditingMacros, setIsEditingMacros] = useState(false)
   const [macrosValue, setMacrosValue] = useState({
@@ -415,6 +605,8 @@ function MealCard({
     fat: meal.macros.fat.toString(),
   })
   const [savingMacros, setSavingMacros] = useState(false)
+  const [editingIngredientIndex, setEditingIngredientIndex] = useState<number | null>(null)
+  const [savingIngredient, setSavingIngredient] = useState(false)
 
   const mealTypeColors: Record<string, string> = {
     breakfast: 'bg-yellow-100 text-yellow-800',
@@ -576,16 +768,16 @@ function MealCard({
               title="Click to edit macros"
             >
               <span className="text-gray-600">
-                <span className="font-medium">{meal.macros.calories}</span> kcal
+                <span className="font-medium">{Math.round(meal.macros.calories)}</span> kcal
               </span>
               <span className="text-blue-600">
-                <span className="font-medium">{meal.macros.protein}g</span> protein
+                <span className="font-medium">{Math.round(meal.macros.protein)}g</span> protein
               </span>
               <span className="text-orange-600">
-                <span className="font-medium">{meal.macros.carbs}g</span> carbs
+                <span className="font-medium">{Math.round(meal.macros.carbs)}g</span> carbs
               </span>
               <span className="text-purple-600">
-                <span className="font-medium">{meal.macros.fat}g</span> fat
+                <span className="font-medium">{Math.round(meal.macros.fat)}g</span> fat
               </span>
               <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -647,14 +839,32 @@ function MealCard({
       {isExpanded && (
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Ingredients */}
+            {/* Ingredients with Nutrition */}
             <div>
-              <h5 className="font-medium text-gray-900 mb-2">Ingredients</h5>
-              <ul className="space-y-1">
+              <h5 className="font-medium text-gray-900 mb-2">
+                Ingredients
+                <span className="text-xs text-gray-400 font-normal ml-2">(click to edit nutrition)</span>
+              </h5>
+              <ul className="space-y-2">
                 {meal.ingredients.map((ing, idx) => (
-                  <li key={idx} className="text-sm text-gray-600">
-                    {ing.amount} {ing.unit} {ing.name}
-                  </li>
+                  <IngredientRow
+                    key={idx}
+                    ingredient={ing}
+                    isEditing={editingIngredientIndex === idx}
+                    isSaving={savingIngredient && editingIngredientIndex === idx}
+                    onStartEdit={() => setEditingIngredientIndex(idx)}
+                    onCancelEdit={() => setEditingIngredientIndex(null)}
+                    onSave={async (updatedIng) => {
+                      setSavingIngredient(true)
+                      const success = await onIngredientChange(idx, updatedIng)
+                      if (success) {
+                        setEditingIngredientIndex(null)
+                      }
+                      setSavingIngredient(false)
+                    }}
+                    mealName={meal.name}
+                    mealPlanId={mealPlanId}
+                  />
                 ))}
               </ul>
             </div>
@@ -674,5 +884,165 @@ function MealCard({
         </div>
       )}
     </div>
+  )
+}
+
+// Ingredient row component with inline editing
+function IngredientRow({
+  ingredient,
+  isEditing,
+  isSaving,
+  onStartEdit,
+  onCancelEdit,
+  onSave,
+  mealName,
+  mealPlanId,
+}: {
+  ingredient: Ingredient
+  isEditing: boolean
+  isSaving: boolean
+  onStartEdit: () => void
+  onCancelEdit: () => void
+  onSave: (updatedIngredient: Ingredient) => Promise<void>
+  mealName: string
+  mealPlanId: string
+}) {
+  const [editValues, setEditValues] = useState({
+    calories: ingredient.calories?.toString() || '0',
+    protein: ingredient.protein?.toString() || '0',
+    carbs: ingredient.carbs?.toString() || '0',
+    fat: ingredient.fat?.toString() || '0',
+  })
+
+  const hasNutritionData = ingredient.calories !== undefined
+
+  const handleSave = async () => {
+    const newCalories = parseFloat(editValues.calories) || 0
+    const newProtein = parseFloat(editValues.protein) || 0
+    const newCarbs = parseFloat(editValues.carbs) || 0
+    const newFat = parseFloat(editValues.fat) || 0
+
+    // Save to user overrides API
+    try {
+      await fetch('/api/ingredient-overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ingredient_name: ingredient.name,
+          serving_size: parseFloat(ingredient.amount) || 1,
+          serving_unit: ingredient.unit,
+          original_calories: ingredient.calories,
+          original_protein: ingredient.protein,
+          original_carbs: ingredient.carbs,
+          original_fat: ingredient.fat,
+          override_calories: newCalories,
+          override_protein: newProtein,
+          override_carbs: newCarbs,
+          override_fat: newFat,
+          meal_plan_id: mealPlanId,
+          meal_name: mealName,
+        }),
+      })
+    } catch (error) {
+      console.error('Error saving ingredient override:', error)
+    }
+
+    // Update local state
+    await onSave({
+      ...ingredient,
+      calories: newCalories,
+      protein: newProtein,
+      carbs: newCarbs,
+      fat: newFat,
+    })
+  }
+
+  if (isEditing) {
+    return (
+      <li className="text-sm bg-gray-50 rounded-lg p-3 border border-gray-200">
+        <div className="font-medium text-gray-900 mb-2">
+          {ingredient.amount} {ingredient.unit} {ingredient.name}
+        </div>
+        <div className="grid grid-cols-4 gap-2 mb-2">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Calories</label>
+            <input
+              type="number"
+              value={editValues.calories}
+              onChange={(e) => setEditValues({ ...editValues, calories: e.target.value })}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+              step="0.1"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Protein</label>
+            <input
+              type="number"
+              value={editValues.protein}
+              onChange={(e) => setEditValues({ ...editValues, protein: e.target.value })}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+              step="0.1"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Carbs</label>
+            <input
+              type="number"
+              value={editValues.carbs}
+              onChange={(e) => setEditValues({ ...editValues, carbs: e.target.value })}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+              step="0.1"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Fat</label>
+            <input
+              type="number"
+              value={editValues.fat}
+              onChange={(e) => setEditValues({ ...editValues, fat: e.target.value })}
+              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+              step="0.1"
+            />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-3 py-1 text-xs bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50"
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </button>
+          <button
+            onClick={onCancelEdit}
+            className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+          >
+            Cancel
+          </button>
+        </div>
+      </li>
+    )
+  }
+
+  return (
+    <li
+      className="text-sm text-gray-600 p-2 hover:bg-gray-50 rounded cursor-pointer group transition-colors"
+      onClick={onStartEdit}
+    >
+      <div className="flex justify-between items-start">
+        <span>{ingredient.amount} {ingredient.unit} {ingredient.name}</span>
+        <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 flex-shrink-0 ml-2 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+      </div>
+      {hasNutritionData && (
+        <div className="flex gap-3 text-xs text-gray-400 mt-1">
+          <span>{ingredient.calories} cal</span>
+          <span className="text-blue-400">{ingredient.protein}g P</span>
+          <span className="text-orange-400">{ingredient.carbs}g C</span>
+          <span className="text-purple-400">{ingredient.fat}g F</span>
+        </div>
+      )}
+    </li>
   )
 }

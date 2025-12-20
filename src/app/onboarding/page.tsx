@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { DietaryPreference, PrepTime, MealsPerDay, OnboardingData, MealType, MealConsistency } from '@/lib/types'
-import { DIETARY_PREFERENCE_LABELS, PREP_TIME_OPTIONS, MEALS_PER_DAY_OPTIONS, DEFAULT_MEAL_CONSISTENCY_PREFS, MEAL_TYPE_LABELS } from '@/lib/types'
+import type { DietaryPreference, PrepTime, MealsPerDay, OnboardingData, MealType, MealConsistency, IngredientCategory, PrepStyle, MealComplexity } from '@/lib/types'
+import { DIETARY_PREFERENCE_LABELS, PREP_TIME_OPTIONS, MEALS_PER_DAY_OPTIONS, DEFAULT_MEAL_CONSISTENCY_PREFS, MEAL_TYPE_LABELS, DEFAULT_INGREDIENT_VARIETY_PREFS, INGREDIENT_CATEGORY_LABELS, INGREDIENT_VARIETY_RANGES, PREP_STYLE_LABELS, MEAL_COMPLEXITY_LABELS, DEFAULT_PREP_STYLE, DEFAULT_MEAL_COMPLEXITY_PREFS } from '@/lib/types'
 import NumericInput from '@/components/NumericInput'
 import ProfilePhotoUpload from '@/components/ProfilePhotoUpload'
 
-const STEPS = ['basics', 'macros', 'preferences', 'consistency'] as const
+const STEPS = ['basics', 'macros', 'preferences', 'consistency', 'prep_style', 'meal_complexity', 'ingredients'] as const
 type Step = typeof STEPS[number]
 
 export default function OnboardingPage() {
@@ -29,6 +29,11 @@ export default function OnboardingPage() {
     meals_per_day: 3,
     prep_time: 30,
     meal_consistency_prefs: { ...DEFAULT_MEAL_CONSISTENCY_PREFS },
+    ingredient_variety_prefs: { ...DEFAULT_INGREDIENT_VARIETY_PREFS },
+    prep_style: DEFAULT_PREP_STYLE,
+    breakfast_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.breakfast,
+    lunch_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.lunch,
+    dinner_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.dinner,
     profile_photo_url: null,
   })
 
@@ -75,6 +80,11 @@ export default function OnboardingPage() {
         meals_per_day: formData.meals_per_day,
         prep_time: formData.prep_time,
         meal_consistency_prefs: formData.meal_consistency_prefs,
+        ingredient_variety_prefs: formData.ingredient_variety_prefs,
+        prep_style: formData.prep_style,
+        breakfast_complexity: formData.breakfast_complexity,
+        lunch_complexity: formData.lunch_complexity,
+        dinner_complexity: formData.dinner_complexity,
         profile_photo_url: formData.profile_photo_url,
       })
       .eq('id', user.id)
@@ -415,6 +425,203 @@ export default function OnboardingPage() {
             </div>
           )}
 
+          {/* Step 5: Prep Style */}
+          {currentStep === 'prep_style' && (
+            <div className="space-y-6">
+              <h3 className="text-xl font-semibold text-gray-900">How do you prefer to meal prep?</h3>
+              <p className="text-gray-600">
+                We&apos;ll organize your weekly prep schedule to match your style.
+              </p>
+
+              <div className="grid gap-3">
+                {(Object.keys(PREP_STYLE_LABELS) as PrepStyle[]).map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, prep_style: style })}
+                    className={`p-4 rounded-lg border-2 text-left transition-all ${
+                      formData.prep_style === style
+                        ? 'border-primary-500 bg-primary-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="font-semibold text-gray-900">
+                      {PREP_STYLE_LABELS[style].title}
+                    </div>
+                    <div className="text-sm text-gray-600 mt-1">
+                      {PREP_STYLE_LABELS[style].description}
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              <div className="bg-primary-50 p-4 rounded-lg">
+                <p className="text-sm text-primary-800">
+                  <strong>Tip:</strong> Most people find &quot;Mixed/Flexible&quot; works best - batch cook proteins on the weekend,
+                  but make fresh dinners during the week.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Step 6: Meal Complexity */}
+          {currentStep === 'meal_complexity' && (
+            <div className="space-y-6">
+              <h3 className="text-xl font-semibold text-gray-900">What level of cooking effort do you prefer?</h3>
+              <p className="text-gray-600">
+                We&apos;ll match meal complexity to your preferences for each meal type.
+              </p>
+
+              {/* Breakfast */}
+              <div>
+                <label className="block font-medium text-gray-900 mb-2">Breakfast</label>
+                <div className="grid gap-2">
+                  {(Object.keys(MEAL_COMPLEXITY_LABELS) as MealComplexity[]).map((complexity) => (
+                    <button
+                      key={complexity}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, breakfast_complexity: complexity })}
+                      className={`p-3 rounded-lg border-2 text-left text-sm transition-all ${
+                        formData.breakfast_complexity === complexity
+                          ? 'border-primary-500 bg-primary-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="font-semibold">
+                        {MEAL_COMPLEXITY_LABELS[complexity].title} ({MEAL_COMPLEXITY_LABELS[complexity].time})
+                      </div>
+                      <div className="text-gray-600">
+                        Example: {MEAL_COMPLEXITY_LABELS[complexity].example}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Lunch */}
+              <div>
+                <label className="block font-medium text-gray-900 mb-2">Lunch</label>
+                <div className="grid gap-2">
+                  {(Object.keys(MEAL_COMPLEXITY_LABELS) as MealComplexity[]).map((complexity) => (
+                    <button
+                      key={complexity}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, lunch_complexity: complexity })}
+                      className={`p-3 rounded-lg border-2 text-left text-sm transition-all ${
+                        formData.lunch_complexity === complexity
+                          ? 'border-primary-500 bg-primary-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="font-semibold">
+                        {MEAL_COMPLEXITY_LABELS[complexity].title} ({MEAL_COMPLEXITY_LABELS[complexity].time})
+                      </div>
+                      <div className="text-gray-600">
+                        Example: {MEAL_COMPLEXITY_LABELS[complexity].example}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Dinner */}
+              <div>
+                <label className="block font-medium text-gray-900 mb-2">Dinner</label>
+                <div className="grid gap-2">
+                  {(Object.keys(MEAL_COMPLEXITY_LABELS) as MealComplexity[]).map((complexity) => (
+                    <button
+                      key={complexity}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, dinner_complexity: complexity })}
+                      className={`p-3 rounded-lg border-2 text-left text-sm transition-all ${
+                        formData.dinner_complexity === complexity
+                          ? 'border-primary-500 bg-primary-50'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="font-semibold">
+                        {MEAL_COMPLEXITY_LABELS[complexity].title} ({MEAL_COMPLEXITY_LABELS[complexity].time})
+                      </div>
+                      <div className="text-gray-600">
+                        Example: {MEAL_COMPLEXITY_LABELS[complexity].example}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-primary-50 p-4 rounded-lg">
+                <p className="text-sm text-primary-800">
+                  <strong>Tip:</strong> Quick assembly breakfasts and lunches with full-recipe dinners is a popular
+                  choice for busy athletes who want to save time during the day but enjoy cooking in the evening.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Step 7: Ingredient Variety */}
+          {currentStep === 'ingredients' && (
+            <div className="space-y-6">
+              <h3 className="text-xl font-semibold text-gray-900">Grocery Shopping Preferences</h3>
+              <p className="text-gray-600">
+                How many different items do you want to buy in each category? Fewer items means a simpler shopping list
+                and easier meal prep. More items means more variety in your meals.
+              </p>
+
+              <div className="space-y-4">
+                {(Object.keys(INGREDIENT_CATEGORY_LABELS) as IngredientCategory[]).map((category) => {
+                  const range = INGREDIENT_VARIETY_RANGES[category]
+                  const currentValue = formData.ingredient_variety_prefs[category]
+
+                  return (
+                    <div key={category} className="p-4 bg-gray-50 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-gray-900">
+                          {INGREDIENT_CATEGORY_LABELS[category]}
+                        </span>
+                        <span className="text-primary-600 font-semibold">
+                          {currentValue} {currentValue === 1 ? 'item' : 'items'}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={range.min}
+                        max={range.max}
+                        value={currentValue}
+                        onChange={(e) => setFormData(prev => ({
+                          ...prev,
+                          ingredient_variety_prefs: {
+                            ...prev.ingredient_variety_prefs,
+                            [category]: parseInt(e.target.value),
+                          },
+                        }))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-primary-600"
+                      />
+                      <div className="flex justify-between text-xs text-gray-500 mt-1">
+                        <span>{range.min}</span>
+                        <span>{range.max}</span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <div className="bg-primary-50 p-4 rounded-lg">
+                <p className="text-sm text-primary-800">
+                  <strong>Tip:</strong> A typical efficient grocery list has 3 proteins, 5 vegetables, 2 fruits, 2 grains, 3 fats,
+                  and 3 pantry items. This creates variety while keeping shopping simple.
+                </p>
+              </div>
+
+              <div className="p-4 bg-gray-100 rounded-lg">
+                <p className="text-sm text-gray-700">
+                  <strong>Total items:</strong>{' '}
+                  {Object.values(formData.ingredient_variety_prefs).reduce((a, b) => a + b, 0)} items on your shopping list
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Navigation buttons */}
           <div className="mt-8 flex justify-between">
             {currentStep !== 'basics' ? (
@@ -429,7 +636,7 @@ export default function OnboardingPage() {
               <div />
             )}
 
-            {currentStep !== 'consistency' ? (
+            {currentStep !== 'ingredients' ? (
               <button
                 type="button"
                 onClick={handleNext}
