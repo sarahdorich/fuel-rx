@@ -129,8 +129,20 @@ export async function POST() {
       }
     }
 
-    // Save prep sessions
-    const prepSessionInserts = mealPlanData.prep_sessions.prepSessions.map(session => ({
+    // Save prep sessions with new fields for collapsible prep view
+    const prepSessionInserts = mealPlanData.prep_sessions.prepSessions.map((session: {
+      sessionName: string;
+      sessionOrder: number;
+      estimatedMinutes: number;
+      prepItems: Array<{ feeds: Array<{ day: string; meal: string }> }>;
+      instructions: string;
+      sessionType?: string;
+      sessionDay?: string | null;
+      sessionTimeOfDay?: string | null;
+      prepForDate?: string | null;
+      prepTasks?: Array<{ id: string; description: string; estimated_minutes: number; meal_ids: string[]; completed: boolean }>;
+      displayOrder?: number;
+    }) => ({
       meal_plan_id: savedPlan.id,
       session_name: session.sessionName,
       session_order: session.sessionOrder,
@@ -139,6 +151,13 @@ export async function POST() {
       feeds_meals: session.prepItems.flatMap(item => item.feeds),
       instructions: session.instructions,
       daily_assembly: mealPlanData.prep_sessions.dailyAssembly,
+      // New fields for collapsible prep view
+      session_type: session.sessionType || 'weekly_batch',
+      session_day: session.sessionDay || null,
+      session_time_of_day: session.sessionTimeOfDay || null,
+      prep_for_date: session.prepForDate || null,
+      prep_tasks: session.prepTasks ? { tasks: session.prepTasks } : { tasks: [] },
+      display_order: session.displayOrder || session.sessionOrder,
     }))
 
     if (prepSessionInserts.length > 0) {

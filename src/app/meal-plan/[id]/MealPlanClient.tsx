@@ -427,10 +427,16 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
               {isFavorite ? 'Favorited' : 'Favorite'}
             </button>
             <Link
+              href={`/prep-view/${mealPlan.id}`}
+              className="btn-outline"
+            >
+              Prep Schedule
+            </Link>
+            <Link
               href={`/grocery-list/${mealPlan.id}`}
               className="btn-primary"
             >
-              View Grocery List
+              Grocery List
             </Link>
           </div>
         </div>
@@ -500,25 +506,25 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                 <div className="grid grid-cols-4 gap-4 text-center">
                   <div>
                     <p className="text-2xl font-bold text-primary-600">
-                      {currentDayPlan.daily_totals.calories}
+                      {Math.round(currentDayPlan.daily_totals.calories)}
                     </p>
                     <p className="text-sm text-gray-500">Calories</p>
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-blue-600">
-                      {currentDayPlan.daily_totals.protein}g
+                      {Math.round(currentDayPlan.daily_totals.protein)}g
                     </p>
                     <p className="text-sm text-gray-500">Protein</p>
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-orange-600">
-                      {currentDayPlan.daily_totals.carbs}g
+                      {Math.round(currentDayPlan.daily_totals.carbs)}g
                     </p>
                     <p className="text-sm text-gray-500">Carbs</p>
                   </div>
                   <div>
                     <p className="text-2xl font-bold text-purple-600">
-                      {currentDayPlan.daily_totals.fat}g
+                      {Math.round(currentDayPlan.daily_totals.fat)}g
                     </p>
                     <p className="text-sm text-gray-500">Fat</p>
                   </div>
@@ -762,16 +768,16 @@ function MealCard({
               title="Click to edit macros"
             >
               <span className="text-gray-600">
-                <span className="font-medium">{meal.macros.calories}</span> kcal
+                <span className="font-medium">{Math.round(meal.macros.calories)}</span> kcal
               </span>
               <span className="text-blue-600">
-                <span className="font-medium">{meal.macros.protein}g</span> protein
+                <span className="font-medium">{Math.round(meal.macros.protein)}g</span> protein
               </span>
               <span className="text-orange-600">
-                <span className="font-medium">{meal.macros.carbs}g</span> carbs
+                <span className="font-medium">{Math.round(meal.macros.carbs)}g</span> carbs
               </span>
               <span className="text-purple-600">
-                <span className="font-medium">{meal.macros.fat}g</span> fat
+                <span className="font-medium">{Math.round(meal.macros.fat)}g</span> fat
               </span>
               <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 self-center" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />

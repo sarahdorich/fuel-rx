@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { DIETARY_PREFERENCE_LABELS, MEAL_TYPE_LABELS, DEFAULT_MEAL_CONSISTENCY_PREFS } from '@/lib/types'
-import type { UserProfile, DietaryPreference, MealType, MealConsistencyPrefs, PrepTime, MealsPerDay } from '@/lib/types'
+import { DIETARY_PREFERENCE_LABELS, MEAL_TYPE_LABELS, DEFAULT_MEAL_CONSISTENCY_PREFS, PREP_STYLE_LABELS, MEAL_COMPLEXITY_LABELS } from '@/lib/types'
+import type { UserProfile, DietaryPreference, MealType, MealConsistencyPrefs, PrepTime, MealsPerDay, PrepStyle, MealComplexity } from '@/lib/types'
 import EditMacrosModal from '@/components/EditMacrosModal'
 import EditPreferencesModal from '@/components/EditPreferencesModal'
 import EditVarietyModal from '@/components/EditVarietyModal'
@@ -157,7 +157,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
             {recentPlan ? (
               <>
                 <p className="text-gray-600 mb-2">
-                  Week of {new Date(recentPlan.week_start_date).toLocaleDateString('en-US', {
+                  Week of {new Date(recentPlan.week_start_date + 'T00:00:00').toLocaleDateString('en-US', {
                     month: 'long',
                     day: 'numeric',
                     year: 'numeric',
@@ -257,7 +257,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
                   </div>
                 </div>
 
-                <div className="sm:col-span-2 lg:col-span-4">
+                <div className="sm:col-span-2 lg:col-span-2">
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-sm text-gray-500">Meal Variety</p>
                     <button
@@ -284,6 +284,34 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
                         </span>
                       );
                     })}
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2 lg:col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm text-gray-500">Prep Style</p>
+                    <Link
+                      href="/settings/prep"
+                      className="text-primary-600 hover:text-primary-700 text-xs font-medium"
+                    >
+                      Edit
+                    </Link>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="font-medium text-sm">
+                      {PREP_STYLE_LABELS[profile.prep_style as PrepStyle]?.title || 'Mixed/Flexible'}
+                    </p>
+                    <div className="flex flex-wrap gap-2 text-xs text-gray-600">
+                      <span className="bg-gray-100 px-2 py-0.5 rounded">
+                        B: {MEAL_COMPLEXITY_LABELS[profile.breakfast_complexity as MealComplexity]?.title || 'Minimal'}
+                      </span>
+                      <span className="bg-gray-100 px-2 py-0.5 rounded">
+                        L: {MEAL_COMPLEXITY_LABELS[profile.lunch_complexity as MealComplexity]?.title || 'Minimal'}
+                      </span>
+                      <span className="bg-gray-100 px-2 py-0.5 rounded">
+                        D: {MEAL_COMPLEXITY_LABELS[profile.dinner_complexity as MealComplexity]?.title || 'Full Recipe'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>

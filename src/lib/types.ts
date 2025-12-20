@@ -15,6 +15,62 @@ export type MealConsistency = 'consistent' | 'varied';
 
 export type MealConsistencyPrefs = Record<MealType, MealConsistency>;
 
+// Prep style preferences
+export type PrepStyle = 'traditional_batch' | 'night_before' | 'day_of' | 'mixed';
+
+export type MealComplexity = 'quick_assembly' | 'minimal_prep' | 'full_recipe';
+
+export const PREP_STYLE_LABELS: Record<PrepStyle, { title: string; description: string }> = {
+  traditional_batch: {
+    title: 'Traditional Batch Prep',
+    description: 'Prep all meals on Sunday (or one day per week)',
+  },
+  night_before: {
+    title: 'Night Before',
+    description: "Prep tomorrow's meals the night before",
+  },
+  day_of: {
+    title: 'Day-Of Fresh Cooking',
+    description: 'Cook each meal fresh when you eat it',
+  },
+  mixed: {
+    title: 'Mixed/Flexible',
+    description: 'Combination: batch some proteins, simple breakfasts/lunches, fresh dinners',
+  },
+};
+
+export const MEAL_COMPLEXITY_LABELS: Record<MealComplexity, { title: string; time: string; example: string }> = {
+  quick_assembly: {
+    title: 'Quick Assembly',
+    time: '2-10 min',
+    example: '2 eggs, avocado, tomatoes',
+  },
+  minimal_prep: {
+    title: 'Minimal Prep',
+    time: '10-20 min',
+    example: 'Veggie omelet, overnight oats',
+  },
+  full_recipe: {
+    title: 'Full Recipe',
+    time: '20-45 min',
+    example: 'Breakfast burrito bowl, frittata',
+  },
+};
+
+export const DEFAULT_PREP_STYLE: PrepStyle = 'mixed';
+
+export interface MealComplexityPrefs {
+  breakfast: MealComplexity;
+  lunch: MealComplexity;
+  dinner: MealComplexity;
+}
+
+export const DEFAULT_MEAL_COMPLEXITY_PREFS: MealComplexityPrefs = {
+  breakfast: 'minimal_prep',
+  lunch: 'minimal_prep',
+  dinner: 'full_recipe',
+};
+
 export const DEFAULT_MEAL_CONSISTENCY_PREFS: MealConsistencyPrefs = {
   breakfast: 'varied',
   lunch: 'varied',
@@ -43,6 +99,11 @@ export interface UserProfile {
   prep_time: PrepTime;
   meal_consistency_prefs: MealConsistencyPrefs;
   ingredient_variety_prefs: IngredientVarietyPrefs;
+  // Prep style preferences
+  prep_style: PrepStyle;
+  breakfast_complexity: MealComplexity;
+  lunch_complexity: MealComplexity;
+  dinner_complexity: MealComplexity;
   social_feed_enabled: boolean;
   display_name: string | null;
   profile_photo_url: string | null;
@@ -135,6 +196,11 @@ export interface OnboardingData {
   prep_time: PrepTime;
   meal_consistency_prefs: MealConsistencyPrefs;
   ingredient_variety_prefs: IngredientVarietyPrefs;
+  // Prep style preferences
+  prep_style: PrepStyle;
+  breakfast_complexity: MealComplexity;
+  lunch_complexity: MealComplexity;
+  dinner_complexity: MealComplexity;
   profile_photo_url: string | null;
 }
 
@@ -339,6 +405,18 @@ export interface DailyAssemblyDay {
 // Daily assembly for all days
 export type DailyAssembly = Partial<Record<DayOfWeek, DailyAssemblyDay>>;
 
+// Prep task for the new collapsible prep view
+export interface PrepTask {
+  id: string;
+  description: string;
+  estimated_minutes: number;
+  meal_ids: string[];
+  completed: boolean;
+}
+
+// Session type for prep scheduling
+export type PrepSessionType = 'weekly_batch' | 'night_before' | 'day_of_morning' | 'day_of_dinner';
+
 // Prep session stored in prep_sessions table
 export interface PrepSession {
   id: string;
@@ -350,7 +428,15 @@ export interface PrepSession {
   feeds_meals: Array<{ day: DayOfWeek; meal: MealType }>;
   instructions: string | null;
   daily_assembly: DailyAssembly | null;
+  // New fields for collapsible prep view
+  session_type: PrepSessionType;
+  session_day: DayOfWeek | null;
+  session_time_of_day: 'morning' | 'afternoon' | 'night' | null;
+  prep_for_date: string | null;
+  prep_tasks: { tasks: PrepTask[] };
+  display_order: number;
   created_at: string;
+  updated_at?: string;
 }
 
 // Extended meal plan with two-stage generation data

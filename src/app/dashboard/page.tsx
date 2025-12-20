@@ -26,14 +26,14 @@ export default async function DashboardPage() {
     // We'll still show dashboard but prompt them
   }
 
-  // Get most recent meal plan
+  // Get most recent meal plan - use maybeSingle() to handle no results gracefully
   const { data: recentPlan } = await supabase
     .from('meal_plans')
-    .select('*')
+    .select('id, week_start_date, created_at, is_favorite')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
   return (
     <DashboardClient
