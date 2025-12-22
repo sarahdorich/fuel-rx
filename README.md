@@ -126,15 +126,15 @@ Built for athletes who know nutrition matters but struggle with meal planning an
 
 ## Environment Variables
 
-Create a `.env.local` file in the root directory:
+Create a `.env` file in the root directory:
 
 ```bash
-# Supabase
-SUPABASE_PROJECT_URL=your_supabase_project_url
-SUPABASE_API_KEY=your_supabase_anon_key
-
-# Claude API
-ANTHROPIC_API_KEY=your_anthropic_api_key
+SUPABASE_PROJECT_URL="https://localhost:54331"
+SUPABASE_ACCESS_TOKEN=""
+SUPABASE_API_KEY=""
+NEXT_PUBLIC_SUPABASE_URL="http://127.0.0.1:54331"
+NEXT_PUBLIC_SUPABASE_ANON_KEY=""
+ANTHROPIC_API_KEY=""
 ```
 
 ## Installation
@@ -160,9 +160,24 @@ Run the SQL migrations in your Supabase project (see `/supabase/migrations` fold
 For local development, we use the [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started?queryGroups=platform&platform=macos).
 
 Install the supabase cli:
-```
+```bash
 brew install supabase/tap/supabase
 brew upgrade supabase
+```
+
+Initialize supabase:
+```bash
+supabase init
+```
+
+Login to supabase:
+```bash
+supabase login
+```
+
+Link your project:
+```bash
+supabase link --project-ref <supabase_project_id>
 ```
 
 Install [Docker Desktop](https://docs.docker.com/desktop/).
@@ -171,6 +186,37 @@ Check migration status with:
 ```bash
 supabase migration list --linked
 ```
+
+Pull existing schema from supabase:
+```bash
+supabase db pull
+```
+
+If you get errors from above, it's because you ran some migrations manually. To tell supabase these migrations have already been applied, just run the following for each migration file:
+```bash
+supabase migration repair --status applied 0001
+```
+
+List migrations that have been applied:
+```bash
+supabase migration list
+```
+
+Start you local supabase:
+```bash
+supabase start
+```
+
+You can always run the following to retrieve local supabase credentials:
+```bash
+supabase status
+```
+
+Use the keys that get outputted to update .env.development.local as well as .env.
+
+Go to this URL to access your local supabase: http://127.0.0.1:54323
+
+Run this to start the application using your local setup: `npm run dev`
 
 You can view your local supabase instance here: http://127.0.0.1:54333/
 
@@ -184,6 +230,10 @@ To run new migrations locally:
 supabase migration up
 ```
 
+To totally reset (recreate) your local database, run this:
+```bash
+supabase db reset
+```
 
 # Project Structure
 
