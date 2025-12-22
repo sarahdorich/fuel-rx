@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { DIETARY_PREFERENCE_LABELS, MEAL_TYPE_LABELS, DEFAULT_MEAL_CONSISTENCY_PREFS, PREP_STYLE_LABELS, MEAL_COMPLEXITY_LABELS } from '@/lib/types'
-import type { UserProfile, DietaryPreference, MealType, MealConsistencyPrefs, PrepTime, MealsPerDay, PrepStyle, MealComplexity } from '@/lib/types'
+import type { UserProfile, DietaryPreference, MealType, PrepStyle, MealComplexity } from '@/lib/types'
 import EditMacrosModal from '@/components/EditMacrosModal'
 import EditPreferencesModal from '@/components/EditPreferencesModal'
 import EditVarietyModal from '@/components/EditVarietyModal'
@@ -20,12 +20,27 @@ interface Props {
   } | null
 }
 
+// Progress stage configuration for visual feedback
+const PROGRESS_STAGES = {
+  ingredients: { label: 'Selecting Ingredients', icon: '🥗', progress: 15 },
+  ingredients_done: { label: 'Ingredients Selected', icon: '✓', progress: 25 },
+  meals: { label: 'Creating Meals', icon: '🍽️', progress: 35 },
+  meals_done: { label: 'Meals Created', icon: '✓', progress: 60 },
+  finalizing: { label: 'Building Grocery List & Prep Schedule', icon: '📋', progress: 75 },
+  finalizing_done: { label: 'Almost Done', icon: '✓', progress: 90 },
+  saving: { label: 'Saving Your Plan', icon: '💾', progress: 95 },
+} as const
+
+type ProgressStage = keyof typeof PROGRESS_STAGES
+
 export default function DashboardClient({ profile: initialProfile, recentPlan }: Props) {
   const router = useRouter()
   const supabase = createClient()
   const [profile, setProfile] = useState(initialProfile)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [progressStage, setProgressStage] = useState<ProgressStage | null>(null)
+  const [progressMessage, setProgressMessage] = useState<string>('')
 
   // Modal states
   const [showMacrosModal, setShowMacrosModal] = useState(false)
@@ -41,9 +56,11 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
   const handleGeneratePlan = async () => {
     setGenerating(true)
     setError(null)
+    setProgressStage(null)
+    setProgressMessage('Starting...')
 
     try {
-      const response = await fetch('/api/generate-meal-plan', {
+      const response = await fetch('/api/generate-meal-plan-stream', {
         method: 'POST',
       })
 
@@ -52,11 +69,61 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
         throw new Error(data.error || 'Failed to generate meal plan')
       }
 
-      const data = await response.json()
-      router.push(`/meal-plan/${data.id}`)
+      // Handle SSE stream
+      const reader = response.body?.getReader()
+      if (!reader) {
+        throw new Error('No response stream')
+      }
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || '' // Keep incomplete line in buffer
+
+        let eventType = ''
+        let eventData = ''
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7)
+          } else if (line.startsWith('data: ')) {
+            eventData = line.slice(6)
+
+            if (eventType && eventData) {
+              try {
+                const data = JSON.parse(eventData)
+
+                if (eventType === 'progress') {
+                  setProgressStage(data.stage as ProgressStage)
+                  setProgressMessage(data.message)
+                } else if (eventType === 'complete') {
+                  router.push(`/meal-plan/${data.id}`)
+                  return
+                } else if (eventType === 'error') {
+                  throw new Error(data.error)
+                }
+              } catch (parseError) {
+                console.error('Error parsing SSE data:', parseError)
+              }
+            }
+
+            eventType = ''
+            eventData = ''
+          }
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong')
       setGenerating(false)
+      setProgressStage(null)
     }
   }
 
@@ -136,16 +203,54 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     />
                   </svg>
-                  Generating your plan...
+                  Generating...
                 </span>
               ) : (
                 'Generate Meal Plan'
               )}
             </button>
             {generating && (
-              <p className="text-sm text-gray-500 mt-3 text-center">
-                This may take a few minutes
-              </p>
+              <div className="mt-4 space-y-3">
+                {/* Progress bar */}
+                <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-primary-600 h-2 rounded-full transition-all duration-500 ease-out"
+                    style={{
+                      width: `${progressStage ? PROGRESS_STAGES[progressStage]?.progress || 5 : 5}%`,
+                    }}
+                  />
+                </div>
+
+                {/* Current stage message */}
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-700">
+                    {progressStage && PROGRESS_STAGES[progressStage] ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <span>{PROGRESS_STAGES[progressStage].icon}</span>
+                        <span>{PROGRESS_STAGES[progressStage].label}</span>
+                      </span>
+                    ) : (
+                      'Starting...'
+                    )}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {progressMessage}
+                  </p>
+                </div>
+
+                {/* Stage indicators */}
+                <div className="flex justify-between items-center text-xs text-gray-400 px-1">
+                  <span className={progressStage && PROGRESS_STAGES[progressStage]?.progress >= 25 ? 'text-primary-600' : ''}>
+                    Ingredients
+                  </span>
+                  <span className={progressStage && PROGRESS_STAGES[progressStage]?.progress >= 60 ? 'text-primary-600' : ''}>
+                    Meals
+                  </span>
+                  <span className={progressStage && PROGRESS_STAGES[progressStage]?.progress >= 90 ? 'text-primary-600' : ''}>
+                    Prep Plan
+                  </span>
+                </div>
+              </div>
             )}
           </div>
 

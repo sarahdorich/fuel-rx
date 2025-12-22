@@ -1430,39 +1430,14 @@ Sort by category: produce, protein, dairy, grains, pantry, frozen, other`;
 }
 
 /**
- * Main two-stage meal plan generation function
- * Orchestrates all three stages and returns a complete meal plan with prep sessions
+ * Progress callback type for streaming updates
  */
-export async function generateMealPlanTwoStage(
-  profile: UserProfile,
-  userId: string,
-  recentMealNames?: string[],
-  mealPreferences?: { liked: string[]; disliked: string[] },
-  validatedMeals?: ValidatedMealMacros[]
-): Promise<{
-  days: DayPlan[];
-  grocery_list: Ingredient[];
-  core_ingredients: CoreIngredients;
-  prep_sessions: PrepModeResponse;
-}> {
-  // Stage 1: Generate core ingredients
-  const coreIngredients = await generateCoreIngredients(
-    profile,
-    userId,
-    recentMealNames,
-    mealPreferences
-  );
+export type ProgressCallback = (stage: string, message: string) => void;
 
-  // Stage 2: Generate meals from core ingredients
-  const mealsResult = await generateMealsFromCoreIngredients(
-    profile,
-    coreIngredients,
-    userId,
-    mealPreferences,
-    validatedMeals
-  );
-
-  // Organize meals into day plans
+/**
+ * Helper function to organize meals into day plans
+ */
+function organizeMealsIntoDays(mealsResult: { meals: Array<MealWithIngredientNutrition & { day: DayOfWeek }> }): DayPlan[] {
   const mealsByDay = new Map<DayOfWeek, Meal[]>();
   for (const day of DAYS) {
     mealsByDay.set(day, []);
@@ -1482,7 +1457,7 @@ export async function generateMealPlanTwoStage(
   }
 
   // Build day plans with totals
-  const days: DayPlan[] = DAYS.map(day => {
+  return DAYS.map(day => {
     const meals = mealsByDay.get(day) || [];
     const daily_totals: Macros = meals.reduce(
       (totals, meal) => ({
@@ -1496,21 +1471,89 @@ export async function generateMealPlanTwoStage(
 
     return { day, meals, daily_totals };
   });
+}
 
-  // Generate grocery list from core ingredients
-  const grocery_list = await generateGroceryListFromCoreIngredients(
-    coreIngredients,
-    days,
-    userId
-  );
-
-  // Stage 3: Generate prep sessions
-  const prep_sessions = await generatePrepSessions(
-    days,
-    coreIngredients,
+/**
+ * Main two-stage meal plan generation function
+ * Orchestrates all three stages and returns a complete meal plan with prep sessions
+ */
+export async function generateMealPlanTwoStage(
+  profile: UserProfile,
+  userId: string,
+  recentMealNames?: string[],
+  mealPreferences?: { liked: string[]; disliked: string[] },
+  validatedMeals?: ValidatedMealMacros[]
+): Promise<{
+  days: DayPlan[];
+  grocery_list: Ingredient[];
+  core_ingredients: CoreIngredients;
+  prep_sessions: PrepModeResponse;
+}> {
+  // Use the progress version with a no-op callback
+  return generateMealPlanWithProgress(
     profile,
-    userId
+    userId,
+    recentMealNames,
+    mealPreferences,
+    validatedMeals,
+    () => {} // No-op progress callback
   );
+}
+
+/**
+ * Main two-stage meal plan generation function WITH progress callbacks
+ * Orchestrates all stages with streaming progress updates
+ * Parallelizes grocery list and prep sessions for better performance
+ */
+export async function generateMealPlanWithProgress(
+  profile: UserProfile,
+  userId: string,
+  recentMealNames?: string[],
+  mealPreferences?: { liked: string[]; disliked: string[] },
+  validatedMeals?: ValidatedMealMacros[],
+  onProgress?: ProgressCallback
+): Promise<{
+  days: DayPlan[];
+  grocery_list: Ingredient[];
+  core_ingredients: CoreIngredients;
+  prep_sessions: PrepModeResponse;
+}> {
+  const progress = onProgress || (() => {});
+
+  // Stage 1: Generate core ingredients
+  progress('ingredients', 'Selecting ingredients based on your macros...');
+  const coreIngredients = await generateCoreIngredients(
+    profile,
+    userId,
+    recentMealNames,
+    mealPreferences
+  );
+  progress('ingredients_done', 'Ingredients selected!');
+
+  // Stage 2: Generate meals from core ingredients
+  progress('meals', 'Creating your 7-day meal plan...');
+  const mealsResult = await generateMealsFromCoreIngredients(
+    profile,
+    coreIngredients,
+    userId,
+    mealPreferences,
+    validatedMeals
+  );
+  progress('meals_done', 'Meals created!');
+
+  // Organize meals into day plans
+  const days = organizeMealsIntoDays(mealsResult);
+
+  // Stage 3: Generate grocery list AND prep sessions IN PARALLEL
+  // This is a key performance optimization - these two tasks are independent
+  progress('finalizing', 'Building grocery list and prep schedule...');
+
+  const [grocery_list, prep_sessions] = await Promise.all([
+    generateGroceryListFromCoreIngredients(coreIngredients, days, userId),
+    generatePrepSessions(days, coreIngredients, profile, userId),
+  ]);
+
+  progress('finalizing_done', 'Almost done!');
 
   return {
     days,
