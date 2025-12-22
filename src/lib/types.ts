@@ -405,10 +405,30 @@ export interface DailyAssemblyDay {
 // Daily assembly for all days
 export type DailyAssembly = Partial<Record<DayOfWeek, DailyAssemblyDay>>;
 
+// Cooking temperature information for prep tasks
+export interface CookingTemps {
+  oven?: string;          // e.g., "400°F" or "200°C"
+  stovetop?: string;      // e.g., "medium-high heat"
+  internal_temp?: string; // e.g., "145°F for salmon"
+  grill?: string;         // e.g., "medium-high, 400-450°F"
+}
+
+// Cooking time information for prep tasks
+export interface CookingTimes {
+  prep_time?: string;     // e.g., "5 min"
+  cook_time?: string;     // e.g., "15-20 min"
+  rest_time?: string;     // e.g., "5 min before serving"
+  total_time?: string;    // e.g., "25-30 min"
+}
+
 // Prep task for the new collapsible prep view
 export interface PrepTask {
   id: string;
-  description: string;
+  description: string;              // Brief task title
+  detailed_steps: string[];         // Step-by-step instructions with specifics
+  cooking_temps?: CookingTemps;     // Temperature information if applicable
+  cooking_times?: CookingTimes;     // Time breakdowns
+  tips?: string[];                  // Pro tips for the task
   estimated_minutes: number;
   meal_ids: string[];
   completed: boolean;

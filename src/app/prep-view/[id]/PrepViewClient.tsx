@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import type { PrepSession, PrepTask, PrepStyle, DayOfWeek, PrepItem } from '@/lib/types'
+import type { PrepSession, PrepTask, PrepStyle, DayOfWeek, PrepItem, CookingTemps, CookingTimes } from '@/lib/types'
 import { PREP_STYLE_LABELS } from '@/lib/types'
 
 // Helper to get tasks from session - either from new prep_tasks or old prep_items
@@ -17,7 +17,8 @@ function getSessionTasks(session: PrepSession): PrepTask[] {
   if (session.prep_items && session.prep_items.length > 0) {
     return session.prep_items.map((item: PrepItem, index: number) => ({
       id: `legacy_${session.id}_${index}`,
-      description: `${item.item}${item.quantity ? ` (${item.quantity})` : ''}${item.method ? ` - ${item.method}` : ''}`,
+      description: `${item.item}${item.quantity ? ` (${item.quantity})` : ''}`,
+      detailed_steps: item.method ? [item.method] : [],
       estimated_minutes: Math.round((session.estimated_minutes || 30) / session.prep_items.length),
       meal_ids: item.feeds?.map(f => `meal_${f.day}_${f.meal}`) || [],
       completed: false,
@@ -25,6 +26,27 @@ function getSessionTasks(session: PrepSession): PrepTask[] {
   }
 
   return []
+}
+
+// Format cooking temps for display
+function formatCookingTemps(temps: CookingTemps | undefined): string[] {
+  if (!temps) return []
+  const formatted: string[] = []
+  if (temps.oven) formatted.push(`Oven: ${temps.oven}`)
+  if (temps.stovetop) formatted.push(`Stovetop: ${temps.stovetop}`)
+  if (temps.grill) formatted.push(`Grill: ${temps.grill}`)
+  if (temps.internal_temp) formatted.push(`Internal: ${temps.internal_temp}`)
+  return formatted
+}
+
+// Format cooking times for display
+function formatCookingTimes(times: CookingTimes | undefined): string[] {
+  if (!times) return []
+  const formatted: string[] = []
+  if (times.prep_time) formatted.push(`Prep: ${times.prep_time}`)
+  if (times.cook_time) formatted.push(`Cook: ${times.cook_time}`)
+  if (times.rest_time) formatted.push(`Rest: ${times.rest_time}`)
+  return formatted
 }
 
 interface PrepViewClientProps {
@@ -322,45 +344,129 @@ export default function PrepViewClient({
                         )}
 
                         {tasks.length > 0 ? (
-                          <div className="space-y-3">
-                            {tasks.map((task) => (
-                              <div
-                                key={task.id}
-                                className="flex items-start gap-3 p-3 bg-white rounded-lg border border-gray-200"
-                              >
-                                {/* Checkbox */}
-                                <button
-                                  onClick={() => toggleTaskComplete(session.id, task.id)}
-                                  className={`flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center transition-all mt-0.5 ${
-                                    completedTasks.has(task.id)
-                                      ? 'bg-teal-500 border-teal-500'
-                                      : 'border-gray-300 hover:border-teal-400'
-                                  }`}
-                                >
-                                  {completedTasks.has(task.id) && (
-                                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                                    </svg>
-                                  )}
-                                </button>
+                          <div className="space-y-4">
+                            {tasks.map((task) => {
+                              const cookingTemps = formatCookingTemps(task.cooking_temps)
+                              const cookingTimes = formatCookingTimes(task.cooking_times)
+                              const hasDetails = (task.detailed_steps && task.detailed_steps.length > 0) ||
+                                cookingTemps.length > 0 ||
+                                cookingTimes.length > 0 ||
+                                (task.tips && task.tips.length > 0)
 
-                                {/* Task Details */}
-                                <div className="flex-1 min-w-0">
-                                  <p
-                                    className={`text-gray-900 ${
-                                      completedTasks.has(task.id) ? 'line-through text-gray-500' : ''
-                                    }`}
-                                  >
-                                    {task.description}
-                                  </p>
-                                  {task.estimated_minutes > 0 && (
-                                    <p className="text-sm text-gray-500 mt-1">
-                                      ~{task.estimated_minutes} min
-                                    </p>
+                              return (
+                                <div
+                                  key={task.id}
+                                  className={`bg-white rounded-lg border ${
+                                    completedTasks.has(task.id) ? 'border-green-200 bg-green-50/50' : 'border-gray-200'
+                                  } overflow-hidden`}
+                                >
+                                  {/* Task Header */}
+                                  <div className="flex items-start gap-3 p-4">
+                                    {/* Checkbox */}
+                                    <button
+                                      onClick={() => toggleTaskComplete(session.id, task.id)}
+                                      className={`flex-shrink-0 w-6 h-6 rounded border-2 flex items-center justify-center transition-all mt-0.5 ${
+                                        completedTasks.has(task.id)
+                                          ? 'bg-teal-500 border-teal-500'
+                                          : 'border-gray-300 hover:border-teal-400'
+                                      }`}
+                                    >
+                                      {completedTasks.has(task.id) && (
+                                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                                        </svg>
+                                      )}
+                                    </button>
+
+                                    {/* Task Title and Meta */}
+                                    <div className="flex-1 min-w-0">
+                                      <p
+                                        className={`font-medium text-gray-900 ${
+                                          completedTasks.has(task.id) ? 'line-through text-gray-500' : ''
+                                        }`}
+                                      >
+                                        {task.description}
+                                      </p>
+
+                                      {/* Quick info badges */}
+                                      <div className="flex flex-wrap gap-2 mt-2">
+                                        {task.estimated_minutes > 0 && (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-full">
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            {task.estimated_minutes} min
+                                          </span>
+                                        )}
+                                        {cookingTemps.map((temp, i) => (
+                                          <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full">
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10c0-2 .5-5 2.986-7C14 5 16.09 5.777 17.656 7.343A7.975 7.975 0 0120 13a7.975 7.975 0 01-2.343 5.657z" />
+                                            </svg>
+                                            {temp}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Detailed Steps - expandable section */}
+                                  {hasDetails && !completedTasks.has(task.id) && (
+                                    <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
+                                      {/* Step-by-step instructions */}
+                                      {task.detailed_steps && task.detailed_steps.length > 0 && (
+                                        <div className="mb-3">
+                                          <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Steps</h5>
+                                          <ol className="space-y-1.5">
+                                            {task.detailed_steps.map((step, idx) => (
+                                              <li key={idx} className="flex gap-2 text-sm text-gray-700">
+                                                <span className="flex-shrink-0 w-5 h-5 bg-teal-100 text-teal-700 rounded-full flex items-center justify-center text-xs font-medium">
+                                                  {idx + 1}
+                                                </span>
+                                                <span>{step}</span>
+                                              </li>
+                                            ))}
+                                          </ol>
+                                        </div>
+                                      )}
+
+                                      {/* Cooking times breakdown */}
+                                      {cookingTimes.length > 0 && (
+                                        <div className="mb-3">
+                                          <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Timing</h5>
+                                          <div className="flex flex-wrap gap-2">
+                                            {cookingTimes.map((time, i) => (
+                                              <span key={i} className="text-sm text-gray-600">
+                                                {time}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Pro tips */}
+                                      {task.tips && task.tips.length > 0 && (
+                                        <div className="mt-3 p-2 bg-amber-50 border border-amber-200 rounded-md">
+                                          <h5 className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1 flex items-center gap-1">
+                                            <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                                            </svg>
+                                            Pro Tips
+                                          </h5>
+                                          <ul className="space-y-1">
+                                            {task.tips.map((tip, idx) => (
+                                              <li key={idx} className="text-xs text-amber-800">
+                                                {tip}
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </div>
                                   )}
                                 </div>
-                              </div>
-                            ))}
+                              )
+                            })}
                           </div>
                         ) : (
                           <p className="text-gray-500 text-sm">
