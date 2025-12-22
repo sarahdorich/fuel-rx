@@ -458,4 +458,3 @@ For questions or feedback, please open an issue on GitHub.
 ---
 
 *Built with ❤️ for athletes who'd rather lift than meal plan.*
-
