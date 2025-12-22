@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import PrepViewClient from './PrepViewClient'
-import type { PrepSession } from '@/lib/types'
+import type { PrepSession, DailyAssembly } from '@/lib/types'
 
 export default async function PrepViewPage({
   params,
@@ -46,11 +46,23 @@ export default async function PrepViewPage({
     .eq('id', user.id)
     .single()
 
+  // Extract daily_assembly from prep sessions (it's stored in the first session with data)
+  let dailyAssembly: DailyAssembly | undefined
+  if (prepSessions && prepSessions.length > 0) {
+    for (const session of prepSessions) {
+      if (session.daily_assembly && Object.keys(session.daily_assembly).length > 0) {
+        dailyAssembly = session.daily_assembly as DailyAssembly
+        break
+      }
+    }
+  }
+
   return (
     <PrepViewClient
       mealPlan={mealPlan}
       prepSessions={(prepSessions || []) as PrepSession[]}
       prepStyle={profile?.prep_style || 'mixed'}
+      dailyAssembly={dailyAssembly}
     />
   )
 }

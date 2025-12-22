@@ -128,7 +128,13 @@ export default function HistoryClient({ mealPlans: initialPlans }: Props) {
                       month: 'long',
                       day: 'numeric',
                       year: 'numeric',
-                    })} &middot; Created {new Date(plan.created_at).toLocaleDateString()}
+                    })} &middot; Created {new Date(plan.created_at).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                    })}
                   </p>
                 </div>
 

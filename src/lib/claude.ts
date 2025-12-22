@@ -940,6 +940,7 @@ interface LLMPrepTask {
     total_time?: string;
   };
   tips?: string[];
+  storage?: string;
   estimated_minutes: number;
   meal_ids: string[];
   completed: boolean;
@@ -956,6 +957,7 @@ interface NewPrepSessionsResponse {
     prep_tasks: LLMPrepTask[];
     display_order: number;
   }>;
+  daily_assembly?: DailyAssembly;
 }
 
 /**
@@ -1142,9 +1144,13 @@ Each prep_task represents ONE MEAL and MUST include:
    - "rest_time": e.g., "5 min" (if applicable)
    - "total_time": e.g., "25 min"
 6. "tips": Array of helpful pro tips (optional but encouraged)
-7. "estimated_minutes": Total time in minutes
-8. "meal_ids": Array with the single meal_id this task is for
-9. "completed": false
+7. "storage": Storage instructions (REQUIRED for batch prep and night-before styles, optional for day-of)
+   - e.g., "Refrigerate in airtight container for up to 5 days"
+   - e.g., "Store in glass meal prep containers, keeps 4-5 days refrigerated"
+   - e.g., "Portion into individual containers for grab-and-go"
+8. "estimated_minutes": Total time in minutes
+9. "meal_ids": Array with the single meal_id this task is for
+10. "completed": false
 
 ## RESPONSE FORMAT
 Return ONLY valid JSON:
@@ -1176,6 +1182,7 @@ Return ONLY valid JSON:
             "Prep multiple jars at once for the week",
             "Add berries just before eating to keep them fresh"
           ],
+          "storage": "Refrigerate in mason jars for up to 5 days",
           "estimated_minutes": 5,
           "meal_ids": ["meal_monday_breakfast_0"],
           "completed": false
@@ -1195,6 +1202,7 @@ Return ONLY valid JSON:
             "prep_time": "10 min",
             "total_time": "10 min"
           },
+          "storage": "Keep components separate until serving. Dressing on the side, refrigerate up to 3 days",
           "estimated_minutes": 10,
           "meal_ids": ["meal_monday_lunch_0"],
           "completed": false
@@ -1242,6 +1250,7 @@ Return ONLY valid JSON:
             "Don't move the salmon while searing - let the crust form",
             "Cut sweet potato uniformly for even cooking"
           ],
+          "storage": "Best served fresh. Leftovers keep 2 days refrigerated, reheat veggies in oven",
           "estimated_minutes": 45,
           "meal_ids": ["meal_monday_dinner_0"],
           "completed": false
@@ -1249,7 +1258,18 @@ Return ONLY valid JSON:
       ],
       "display_order": 2
     }
-  ]
+  ],
+  "daily_assembly": {
+    "monday": {
+      "breakfast": { "time": "5 min", "instructions": "Remove overnight oats from fridge, top with fresh berries and enjoy cold" },
+      "lunch": { "time": "5 min", "instructions": "Combine prepped salad components, add dressing, toss and serve" },
+      "dinner": { "time": "0 min", "instructions": "Serve fresh from cooking" }
+    },
+    "tuesday": {
+      "breakfast": { "time": "5 min", "instructions": "Remove overnight oats from fridge, top with fresh berries and enjoy cold" },
+      "lunch": { "time": "5 min", "instructions": "Portion prepped chicken and veggies, microwave 2 min if desired warm" }
+    }
+  }
 }
 
 ## IMPORTANT RULES
@@ -1259,7 +1279,14 @@ Return ONLY valid JSON:
 4. EVERY MEAL must have a prep task - even simple assembly meals like "yogurt with fruit"
 5. detailed_steps is REQUIRED for every task - never leave it empty or with generic descriptions
 6. Include cooking_temps and cooking_times whenever heat/cooking is involved
-7. Base your detailed_steps on the actual meal instructions provided above`;
+7. Base your detailed_steps on the actual meal instructions provided above
+8. STORAGE: Include storage instructions for any meal that is prepped in advance (required for traditional_batch and night_before styles)
+9. DAILY ASSEMBLY (REQUIRED for traditional_batch and night_before styles):
+   - For batch prep and night-before styles, include a "daily_assembly" object in your response
+   - This tells the user how to assemble/reheat prepped food each day
+   - Include instructions for each meal of each day (breakfast, lunch, dinner, snack if applicable)
+   - Each entry should have "time" (quick estimate like "5 min") and "instructions" (what to do at meal time)
+   - For day_of style, daily_assembly can be empty since food is cooked fresh`;
 
   const startTime = Date.now();
   const message = await anthropic.messages.create({
@@ -1302,7 +1329,7 @@ Return ONLY valid JSON:
         item: task.description,
         quantity: '',
         method: task.detailed_steps?.join(' → ') || '', // Include detailed steps in method for legacy
-        storage: '',
+        storage: task.storage || '',
         feeds: task.meal_ids.map(mealId => {
           // Parse meal_id format: "meal_monday_lunch_0"
           const parts = mealId.split('_');
@@ -1328,10 +1355,11 @@ Return ONLY valid JSON:
         cooking_temps: task.cooking_temps || undefined,
         cooking_times: task.cooking_times || undefined,
         tips: task.tips || [],
+        storage: task.storage || undefined,
       })),
       displayOrder: session.display_order,
     })),
-    dailyAssembly: {}, // Will be populated separately if needed
+    dailyAssembly: parsed.daily_assembly || {},
   };
 
   // Store the raw new format for the new prep view UI

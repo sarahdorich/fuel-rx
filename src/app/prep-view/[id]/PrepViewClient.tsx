@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import type { PrepSession, PrepTask, PrepStyle, DayOfWeek, PrepItem, CookingTemps, CookingTimes } from '@/lib/types'
+import type { PrepSession, PrepTask, PrepStyle, DayOfWeek, PrepItem, CookingTemps, CookingTimes, DailyAssembly, MealType } from '@/lib/types'
 import { PREP_STYLE_LABELS } from '@/lib/types'
 
 // Helper to get tasks from session - either from new prep_tasks or old prep_items
@@ -57,12 +57,14 @@ interface PrepViewClientProps {
   }
   prepSessions: PrepSession[]
   prepStyle: string
+  dailyAssembly?: DailyAssembly
 }
 
 export default function PrepViewClient({
   mealPlan,
   prepSessions,
   prepStyle,
+  dailyAssembly,
 }: PrepViewClientProps) {
   const supabase = createClient()
 
@@ -514,6 +516,19 @@ export default function PrepViewClient({
                                           </ul>
                                         </div>
                                       )}
+
+                                      {/* Storage instructions */}
+                                      {task.storage && (
+                                        <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-md">
+                                          <h5 className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1 flex items-center gap-1">
+                                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                                            </svg>
+                                            Storage
+                                          </h5>
+                                          <p className="text-xs text-blue-800">{task.storage}</p>
+                                        </div>
+                                      )}
                                     </div>
                                   )}
                                 </div>
@@ -535,6 +550,59 @@ export default function PrepViewClient({
             })
           )}
         </div>
+
+        {/* Daily Assembly Guide - shown for batch prep and night-before styles */}
+        {dailyAssembly && Object.keys(dailyAssembly).length > 0 && (prepStyle === 'traditional_batch' || prepStyle === 'night_before') && (
+          <div className="card mt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <svg className="w-5 h-5 text-teal-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <h3 className="text-lg font-semibold text-gray-900">Daily Assembly Guide</h3>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Quick reference for assembling your prepped meals each day.
+            </p>
+            <div className="space-y-4">
+              {weekDays.map((day) => {
+                const dayAssembly = dailyAssembly[day]
+                if (!dayAssembly) return null
+
+                const mealTypes: MealType[] = ['breakfast', 'lunch', 'dinner', 'snack']
+                const mealColors: Record<MealType, string> = {
+                  breakfast: 'bg-yellow-100 text-yellow-800',
+                  lunch: 'bg-teal-100 text-teal-800',
+                  dinner: 'bg-blue-100 text-blue-800',
+                  snack: 'bg-purple-100 text-purple-800',
+                }
+
+                return (
+                  <div key={day} className="border-b border-gray-100 pb-3 last:border-b-0 last:pb-0">
+                    <h4 className="font-medium text-gray-900 capitalize mb-2">{day}</h4>
+                    <div className="space-y-2">
+                      {mealTypes.map((mealType) => {
+                        const mealAssembly = dayAssembly[mealType]
+                        if (!mealAssembly) return null
+
+                        return (
+                          <div key={mealType} className="flex items-start gap-2">
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${mealColors[mealType]}`}>
+                              {mealType}
+                            </span>
+                            <div className="flex-1">
+                              <span className="text-xs text-gray-500 mr-2">{mealAssembly.time}</span>
+                              <span className="text-sm text-gray-700">{mealAssembly.instructions}</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Bottom Action */}
         <div className="mt-8 flex gap-4">

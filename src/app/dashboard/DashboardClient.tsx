@@ -17,6 +17,7 @@ interface Props {
     week_start_date: string
     created_at: string
     is_favorite: boolean
+    title: string | null
   } | null
 }
 
@@ -257,7 +258,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
           {/* Recent plan card */}
           <div className="card">
             <h3 className="text-xl font-semibold text-gray-900 mb-4">
-              {recentPlan ? 'Your Latest Plan' : 'No Plans Yet'}
+              {recentPlan ? (recentPlan.title || 'Your Latest Plan') : 'No Plans Yet'}
             </h3>
             {recentPlan ? (
               <>
@@ -269,7 +270,13 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
                   })}
                 </p>
                 <p className="text-sm text-gray-500 mb-6">
-                  Created {new Date(recentPlan.created_at).toLocaleDateString()}
+                  Created {new Date(recentPlan.created_at).toLocaleString('en-US', {
+                  month: 'short',
+                  day: 'numeric',
+                  year: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
                 </p>
                 <div className="flex gap-3">
                   <Link

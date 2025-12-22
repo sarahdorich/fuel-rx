@@ -429,6 +429,7 @@ export interface PrepTask {
   cooking_temps?: CookingTemps;     // Temperature information if applicable
   cooking_times?: CookingTimes;     // Time breakdowns
   tips?: string[];                  // Pro tips for the task
+  storage?: string;                 // Storage instructions (e.g., "Refrigerate in airtight container for up to 5 days")
   estimated_minutes: number;
   meal_ids: string[];
   completed: boolean;
