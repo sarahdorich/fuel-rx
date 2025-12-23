@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { DietaryPreference, PrepTime, MealsPerDay, OnboardingData, MealType, MealConsistency, IngredientCategory, PrepStyle, MealComplexity } from '@/lib/types'
-import { DIETARY_PREFERENCE_LABELS, PREP_TIME_OPTIONS, MEALS_PER_DAY_OPTIONS, DEFAULT_MEAL_CONSISTENCY_PREFS, MEAL_TYPE_LABELS, DEFAULT_INGREDIENT_VARIETY_PREFS, INGREDIENT_CATEGORY_LABELS, INGREDIENT_VARIETY_RANGES, PREP_STYLE_LABELS, MEAL_COMPLEXITY_LABELS, DEFAULT_PREP_STYLE, DEFAULT_MEAL_COMPLEXITY_PREFS } from '@/lib/types'
+import type { DietaryPreference, PrepTime, MealsPerDay, OnboardingData, MealType, MealConsistency, IngredientCategory, PrepStyle, MealComplexity, DayOfWeek, HouseholdServingsPrefs } from '@/lib/types'
+import { DIETARY_PREFERENCE_LABELS, PREP_TIME_OPTIONS, MEALS_PER_DAY_OPTIONS, DEFAULT_MEAL_CONSISTENCY_PREFS, MEAL_TYPE_LABELS, DEFAULT_INGREDIENT_VARIETY_PREFS, INGREDIENT_CATEGORY_LABELS, INGREDIENT_VARIETY_RANGES, PREP_STYLE_LABELS, MEAL_COMPLEXITY_LABELS, DEFAULT_PREP_STYLE, DEFAULT_MEAL_COMPLEXITY_PREFS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, DAY_OF_WEEK_LABELS } from '@/lib/types'
 import NumericInput from '@/components/NumericInput'
 import ProfilePhotoUpload from '@/components/ProfilePhotoUpload'
 
-const STEPS = ['basics', 'macros', 'preferences', 'consistency', 'prep_style', 'meal_complexity', 'ingredients'] as const
+const STEPS = ['basics', 'macros', 'preferences', 'consistency', 'prep_style', 'meal_complexity', 'ingredients', 'household'] as const
 type Step = typeof STEPS[number]
 
 export default function OnboardingPage() {
@@ -34,8 +34,12 @@ export default function OnboardingPage() {
     breakfast_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.breakfast,
     lunch_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.lunch,
     dinner_complexity: DEFAULT_MEAL_COMPLEXITY_PREFS.dinner,
+    household_servings: { ...DEFAULT_HOUSEHOLD_SERVINGS_PREFS },
     profile_photo_url: null,
   })
+
+  // State for household step - which day is selected
+  const [activeHouseholdDay, setActiveHouseholdDay] = useState<DayOfWeek>('monday')
 
   // Auto-calculate calories when macros change
   useEffect(() => {
@@ -85,6 +89,7 @@ export default function OnboardingPage() {
         breakfast_complexity: formData.breakfast_complexity,
         lunch_complexity: formData.lunch_complexity,
         dinner_complexity: formData.dinner_complexity,
+        household_servings: formData.household_servings,
         profile_photo_url: formData.profile_photo_url,
       })
       .eq('id', user.id)
@@ -622,6 +627,197 @@ export default function OnboardingPage() {
             </div>
           )}
 
+          {/* Step 8: Household Servings */}
+          {currentStep === 'household' && (
+            <div className="space-y-6">
+              <h3 className="text-xl font-semibold text-gray-900">Feeding Your Household</h3>
+              <p className="text-gray-600">
+                Are you also cooking for family members? Configure how many additional people you&apos;re feeding at each meal.
+                Your macros remain the priority &mdash; we&apos;ll scale quantities accordingly.
+              </p>
+
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <p className="text-sm text-gray-600">
+                  <strong>Note:</strong> Children are counted as 0.6x an adult portion. You (the athlete) are automatically counted as 1 adult.
+                </p>
+              </div>
+
+              {/* Day tabs */}
+              <div className="border-b border-gray-200">
+                <nav className="-mb-px flex space-x-1 overflow-x-auto" aria-label="Days">
+                  {DAYS_OF_WEEK.map(day => {
+                    const daySettings = formData.household_servings[day]
+                    const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const
+                    const hasAny = mealTypes.some(m => daySettings[m].adults > 0 || daySettings[m].children > 0)
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setActiveHouseholdDay(day)}
+                        className={`whitespace-nowrap py-3 px-4 border-b-2 font-medium text-sm transition-colors ${
+                          activeHouseholdDay === day
+                            ? 'border-primary-500 text-primary-600'
+                            : hasAny
+                            ? 'border-transparent text-gray-700 hover:text-gray-900 hover:border-gray-300'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                      >
+                        {DAY_OF_WEEK_LABELS[day].slice(0, 3)}
+                        {hasAny && <span className="ml-1 text-primary-500">*</span>}
+                      </button>
+                    )
+                  })}
+                </nav>
+              </div>
+
+              {/* Current day settings */}
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h4 className="text-lg font-medium text-gray-900">{DAY_OF_WEEK_LABELS[activeHouseholdDay]}</h4>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const weekdays: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday']
+                        setFormData(prev => {
+                          const newServings = { ...prev.household_servings }
+                          weekdays.forEach(day => {
+                            newServings[day] = { ...prev.household_servings[activeHouseholdDay] }
+                          })
+                          return { ...prev, household_servings: newServings }
+                        })
+                      }}
+                      className="text-xs text-primary-600 hover:text-primary-700 px-2 py-1 border border-primary-200 rounded hover:bg-primary-50"
+                    >
+                      Copy to Weekdays
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const weekend: DayOfWeek[] = ['saturday', 'sunday']
+                        setFormData(prev => {
+                          const newServings = { ...prev.household_servings }
+                          weekend.forEach(day => {
+                            newServings[day] = { ...prev.household_servings[activeHouseholdDay] }
+                          })
+                          return { ...prev, household_servings: newServings }
+                        })
+                      }}
+                      className="text-xs text-primary-600 hover:text-primary-700 px-2 py-1 border border-primary-200 rounded hover:bg-primary-50"
+                    >
+                      Copy to Weekend
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid gap-4">
+                  {(['breakfast', 'lunch', 'dinner', 'snacks'] as const).map(mealType => (
+                    <div key={mealType} className="p-4 bg-gray-50 rounded-lg">
+                      <h5 className="font-medium text-gray-900 mb-3 capitalize">{mealType === 'snacks' ? 'Snacks' : mealType}</h5>
+                      <div className="flex flex-wrap gap-6">
+                        {/* Adults */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-600 w-16">Adults</span>
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({
+                              ...prev,
+                              household_servings: {
+                                ...prev.household_servings,
+                                [activeHouseholdDay]: {
+                                  ...prev.household_servings[activeHouseholdDay],
+                                  [mealType]: {
+                                    ...prev.household_servings[activeHouseholdDay][mealType],
+                                    adults: Math.max(0, prev.household_servings[activeHouseholdDay][mealType].adults - 1),
+                                  },
+                                },
+                              },
+                            }))}
+                            disabled={formData.household_servings[activeHouseholdDay][mealType].adults === 0}
+                            className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            -
+                          </button>
+                          <span className="w-8 text-center font-medium">{formData.household_servings[activeHouseholdDay][mealType].adults}</span>
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({
+                              ...prev,
+                              household_servings: {
+                                ...prev.household_servings,
+                                [activeHouseholdDay]: {
+                                  ...prev.household_servings[activeHouseholdDay],
+                                  [mealType]: {
+                                    ...prev.household_servings[activeHouseholdDay][mealType],
+                                    adults: prev.household_servings[activeHouseholdDay][mealType].adults + 1,
+                                  },
+                                },
+                              },
+                            }))}
+                            className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100"
+                          >
+                            +
+                          </button>
+                        </div>
+                        {/* Children */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm text-gray-600 w-16">Children</span>
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({
+                              ...prev,
+                              household_servings: {
+                                ...prev.household_servings,
+                                [activeHouseholdDay]: {
+                                  ...prev.household_servings[activeHouseholdDay],
+                                  [mealType]: {
+                                    ...prev.household_servings[activeHouseholdDay][mealType],
+                                    children: Math.max(0, prev.household_servings[activeHouseholdDay][mealType].children - 1),
+                                  },
+                                },
+                              },
+                            }))}
+                            disabled={formData.household_servings[activeHouseholdDay][mealType].children === 0}
+                            className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            -
+                          </button>
+                          <span className="w-8 text-center font-medium">{formData.household_servings[activeHouseholdDay][mealType].children}</span>
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({
+                              ...prev,
+                              household_servings: {
+                                ...prev.household_servings,
+                                [activeHouseholdDay]: {
+                                  ...prev.household_servings[activeHouseholdDay],
+                                  [mealType]: {
+                                    ...prev.household_servings[activeHouseholdDay][mealType],
+                                    children: prev.household_servings[activeHouseholdDay][mealType].children + 1,
+                                  },
+                                },
+                              },
+                            }))}
+                            className="w-8 h-8 rounded-full border border-gray-300 flex items-center justify-center text-gray-600 hover:bg-gray-100"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-primary-50 p-4 rounded-lg">
+                <p className="text-sm text-primary-800">
+                  <strong>Tip:</strong> You can skip this step if you&apos;re only cooking for yourself.
+                  This is completely optional and can be configured later in settings.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Navigation buttons */}
           <div className="mt-8 flex justify-between">
             {currentStep !== 'basics' ? (
@@ -636,7 +832,7 @@ export default function OnboardingPage() {
               <div />
             )}
 
-            {currentStep !== 'ingredients' ? (
+            {currentStep !== 'household' ? (
               <button
                 type="button"
                 onClick={handleNext}

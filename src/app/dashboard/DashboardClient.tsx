@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
-import { DIETARY_PREFERENCE_LABELS, MEAL_TYPE_LABELS, DEFAULT_MEAL_CONSISTENCY_PREFS, PREP_STYLE_LABELS, MEAL_COMPLEXITY_LABELS } from '@/lib/types'
-import type { UserProfile, DietaryPreference, MealType, PrepStyle, MealComplexity } from '@/lib/types'
+import { DIETARY_PREFERENCE_LABELS, MEAL_TYPE_LABELS, DEFAULT_MEAL_CONSISTENCY_PREFS, PREP_STYLE_LABELS, MEAL_COMPLEXITY_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, DAY_OF_WEEK_LABELS, CHILD_PORTION_MULTIPLIER } from '@/lib/types'
+import type { UserProfile, DietaryPreference, MealType, PrepStyle, MealComplexity, HouseholdServingsPrefs, DayOfWeek } from '@/lib/types'
 import EditMacrosModal from '@/components/EditMacrosModal'
 import EditPreferencesModal from '@/components/EditPreferencesModal'
 import EditVarietyModal from '@/components/EditVarietyModal'
@@ -399,7 +399,7 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
                   </div>
                 </div>
 
-                <div className="sm:col-span-2 lg:col-span-2">
+                <div className="sm:col-span-1 lg:col-span-1">
                   <div className="flex items-center justify-between mb-1">
                     <p className="text-sm text-gray-500">Prep Style</p>
                     <Link
@@ -425,6 +425,56 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
                       </span>
                     </div>
                   </div>
+                </div>
+
+                <div className="sm:col-span-1 lg:col-span-1">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="text-sm text-gray-500">Household</p>
+                    <Link
+                      href="/settings/household"
+                      className="text-primary-600 hover:text-primary-700 text-xs font-medium"
+                    >
+                      Edit
+                    </Link>
+                  </div>
+                  {(() => {
+                    const servings = profile.household_servings ?? DEFAULT_HOUSEHOLD_SERVINGS_PREFS;
+                    const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+
+                    // Check if any household members configured
+                    const hasHousehold = DAYS_OF_WEEK.some(day =>
+                      mealTypes.some(meal => servings[day]?.[meal]?.adults > 0 || servings[day]?.[meal]?.children > 0)
+                    );
+
+                    if (!hasHousehold) {
+                      return (
+                        <p className="text-sm text-gray-500">
+                          Just you (the athlete)
+                        </p>
+                      );
+                    }
+
+                    // Calculate total people served across the week
+                    let totalAdults = 0;
+                    let totalChildren = 0;
+                    DAYS_OF_WEEK.forEach(day => {
+                      mealTypes.forEach(meal => {
+                        totalAdults += servings[day]?.[meal]?.adults || 0;
+                        totalChildren += servings[day]?.[meal]?.children || 0;
+                      });
+                    });
+
+                    return (
+                      <div className="text-sm">
+                        <p className="font-medium text-gray-900">
+                          + {totalAdults > 0 ? `${totalAdults} adult meals` : ''}{totalAdults > 0 && totalChildren > 0 ? ', ' : ''}{totalChildren > 0 ? `${totalChildren} child meals` : ''}/week
+                        </p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          (varies by day)
+                        </p>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             ) : (

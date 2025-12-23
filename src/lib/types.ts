@@ -104,6 +104,8 @@ export interface UserProfile {
   breakfast_complexity: MealComplexity;
   lunch_complexity: MealComplexity;
   dinner_complexity: MealComplexity;
+  // Household servings preferences
+  household_servings: HouseholdServingsPrefs;
   social_feed_enabled: boolean;
   display_name: string | null;
   profile_photo_url: string | null;
@@ -201,6 +203,8 @@ export interface OnboardingData {
   breakfast_complexity: MealComplexity;
   lunch_complexity: MealComplexity;
   dinner_complexity: MealComplexity;
+  // Household servings preferences
+  household_servings: HouseholdServingsPrefs;
   profile_photo_url: string | null;
 }
 
@@ -383,6 +387,58 @@ export interface MealPlanIngredient {
 
 // Day reference for prep mode
 export type DayOfWeek = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday' | 'sunday';
+
+// Household servings preferences - how many additional people to feed per day/meal
+export interface HouseholdServingCount {
+  adults: number;   // Additional adults beyond the main user (each counts as 1x portion)
+  children: number; // Children (each counts as ~0.6x portion)
+}
+
+export interface DayHouseholdServings {
+  breakfast: HouseholdServingCount;
+  lunch: HouseholdServingCount;
+  dinner: HouseholdServingCount;
+  snacks: HouseholdServingCount;
+}
+
+export type HouseholdServingsPrefs = Record<DayOfWeek, DayHouseholdServings>;
+
+export const DEFAULT_HOUSEHOLD_SERVING_COUNT: HouseholdServingCount = {
+  adults: 0,
+  children: 0,
+};
+
+export const DEFAULT_DAY_HOUSEHOLD_SERVINGS: DayHouseholdServings = {
+  breakfast: { adults: 0, children: 0 },
+  lunch: { adults: 0, children: 0 },
+  dinner: { adults: 0, children: 0 },
+  snacks: { adults: 0, children: 0 },
+};
+
+export const DEFAULT_HOUSEHOLD_SERVINGS_PREFS: HouseholdServingsPrefs = {
+  monday: { ...DEFAULT_DAY_HOUSEHOLD_SERVINGS },
+  tuesday: { ...DEFAULT_DAY_HOUSEHOLD_SERVINGS },
+  wednesday: { ...DEFAULT_DAY_HOUSEHOLD_SERVINGS },
+  thursday: { ...DEFAULT_DAY_HOUSEHOLD_SERVINGS },
+  friday: { ...DEFAULT_DAY_HOUSEHOLD_SERVINGS },
+  saturday: { ...DEFAULT_DAY_HOUSEHOLD_SERVINGS },
+  sunday: { ...DEFAULT_DAY_HOUSEHOLD_SERVINGS },
+};
+
+export const DAY_OF_WEEK_LABELS: Record<DayOfWeek, string> = {
+  monday: 'Monday',
+  tuesday: 'Tuesday',
+  wednesday: 'Wednesday',
+  thursday: 'Thursday',
+  friday: 'Friday',
+  saturday: 'Saturday',
+  sunday: 'Sunday',
+};
+
+export const DAYS_OF_WEEK: DayOfWeek[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+// Child portion multiplier (children typically eat 60% of adult portions)
+export const CHILD_PORTION_MULTIPLIER = 0.6;
 
 // Prep item in a prep session
 export interface PrepItem {

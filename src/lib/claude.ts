@@ -19,8 +19,9 @@ import type {
   PrepStyle,
   MealComplexity,
   PrepSessionType,
+  HouseholdServingsPrefs,
 } from './types';
-import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, MEAL_COMPLEXITY_LABELS } from './types';
+import { DEFAULT_MEAL_CONSISTENCY_PREFS, DEFAULT_INGREDIENT_VARIETY_PREFS, MEAL_COMPLEXITY_LABELS, DEFAULT_HOUSEHOLD_SERVINGS_PREFS, DAYS_OF_WEEK, CHILD_PORTION_MULTIPLIER, DAY_OF_WEEK_LABELS } from './types';
 import { createClient } from './supabase/server';
 
 // ============================================
@@ -116,6 +117,104 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// ============================================
+// Household Servings Helper Functions
+// ============================================
+
+/**
+ * Check if user has any household members configured
+ */
+function hasHouseholdMembers(servings: HouseholdServingsPrefs): boolean {
+  const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+  return DAYS_OF_WEEK.some(day =>
+    mealTypes.some(meal => servings[day]?.[meal]?.adults > 0 || servings[day]?.[meal]?.children > 0)
+  );
+}
+
+/**
+ * Calculate the serving multiplier for a specific day and meal
+ * Returns the total multiplier (1 for the athlete + additional household members)
+ */
+function getServingMultiplier(
+  servings: HouseholdServingsPrefs,
+  day: DayOfWeek,
+  mealType: 'breakfast' | 'lunch' | 'dinner' | 'snacks'
+): number {
+  const dayServings = servings[day]?.[mealType];
+  if (!dayServings) return 1;
+
+  // Athlete counts as 1, additional adults as 1 each, children as 0.6 each
+  return 1 + dayServings.adults + (dayServings.children * CHILD_PORTION_MULTIPLIER);
+}
+
+/**
+ * Build a summary of household servings for LLM prompts
+ */
+function buildHouseholdContextSection(servings: HouseholdServingsPrefs): string {
+  if (!hasHouseholdMembers(servings)) {
+    return '';
+  }
+
+  const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+  const lines: string[] = [];
+
+  // Build a day-by-day summary
+  for (const day of DAYS_OF_WEEK) {
+    const dayServings = servings[day];
+    const mealSummaries: string[] = [];
+
+    for (const meal of mealTypes) {
+      const serving = dayServings?.[meal];
+      if (serving && (serving.adults > 0 || serving.children > 0)) {
+        const parts: string[] = [];
+        if (serving.adults > 0) parts.push(`${serving.adults} additional adult${serving.adults > 1 ? 's' : ''}`);
+        if (serving.children > 0) parts.push(`${serving.children} child${serving.children > 1 ? 'ren' : ''}`);
+        const multiplier = getServingMultiplier(servings, day, meal);
+        mealSummaries.push(`${meal}: ${parts.join(' + ')} (${multiplier.toFixed(1)}x portions)`);
+      }
+    }
+
+    if (mealSummaries.length > 0) {
+      lines.push(`- ${DAY_OF_WEEK_LABELS[day]}: ${mealSummaries.join(', ')}`);
+    }
+  }
+
+  if (lines.length === 0) return '';
+
+  return `
+## HOUSEHOLD SERVINGS (IMPORTANT)
+The athlete is also cooking for their household. Generate prep instructions and grocery quantities for the FULL household, not just the athlete.
+
+**Household schedule:**
+${lines.join('\n')}
+
+**Key guidelines:**
+- The athlete's personal macro targets are still the priority for meal COMPOSITION
+- But prep instructions should be for the FULL batch size (all household members)
+- Grocery quantities should be scaled to feed everyone
+- Children count as approximately 0.6x an adult portion
+- Choose meals that scale well and are broadly appealing when feeding children
+`;
+}
+
+/**
+ * Calculate the average serving multiplier across all meals for grocery scaling
+ */
+function getAverageServingMultiplier(servings: HouseholdServingsPrefs): number {
+  const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+  let totalMultiplier = 0;
+  let count = 0;
+
+  for (const day of DAYS_OF_WEEK) {
+    for (const meal of mealTypes) {
+      totalMultiplier += getServingMultiplier(servings, day, meal);
+      count++;
+    }
+  }
+
+  return count > 0 ? totalMultiplier / count : 1;
+}
+
 const DIETARY_LABELS: Record<string, string> = {
   no_restrictions: 'No Restrictions',
   paleo: 'Paleo',
@@ -165,21 +264,64 @@ function buildBasePromptContext(
     .map(pref => DIETARY_LABELS[pref] || pref)
     .join(', ') || 'No restrictions';
 
-  const recentMealsExclusion = recentMealNames && recentMealNames.length > 0
-    ? `\n## IMPORTANT: Meal Variety Requirement\nAVOID these recently used meals from the user's last meal plan: ${recentMealNames.join(', ')}. Create entirely new and different meals to provide variety.\n`
-    : '';
+  // Build comprehensive variety section with recent meals from the last 3 weeks
+  let varietySection = '';
+  if (recentMealNames && recentMealNames.length > 0) {
+    varietySection = `
+## CRITICAL: Meal Variety Requirements (from user's last 3 meal plans)
 
+### Meals to AVOID
+The following meals have been used recently. You MUST NOT use these exact meal names OR meals with similar flavor profiles/ingredient combinations:
+${recentMealNames.slice(0, 50).join(', ')}
+
+### Variety Guidelines
+To ensure fresh, exciting meals each week:
+1. **Avoid similar flavor profiles** - If recent meals were teriyaki-based, don't use other Asian sweet-savory sauces. If they featured Italian herbs, explore different seasonings.
+2. **Avoid similar ingredient combinations** - If recent meals paired chicken with broccoli, use different protein-vegetable pairings.
+3. **Change up cooking methods** - If recent meals were mostly baked/roasted, incorporate more stovetop, one-pan, or bowl-style assembly meals.
+4. **Explore cuisine diversity** - Rotate through different cuisines:
+   - Mediterranean (olive oil, lemon, herbs, feta, olives)
+   - Asian (soy, ginger, sesame, rice vinegar, miso)
+   - Mexican/Latin (cumin, lime, cilantro, peppers, beans)
+   - American/Classic (simple seasonings, familiar comfort foods)
+   - Middle Eastern (tahini, za'atar, sumac, chickpeas)
+   - Indian-inspired (turmeric, cumin, coriander, yogurt-based)
+5. **Vary vegetable preparations** - Mix raw (salads, slaws), steamed, roasted, sautéed, and grilled preparations.
+`;
+  }
+
+  // Build enhanced meal preferences section
   let mealPreferencesSection = '';
   if (mealPreferences) {
-    const parts: string[] = [];
-    if (mealPreferences.liked.length > 0) {
-      parts.push(`**Meals the user LIKES** (try to include similar meals or these exact meals): ${mealPreferences.liked.join(', ')}`);
-    }
-    if (mealPreferences.disliked.length > 0) {
-      parts.push(`**Meals the user DISLIKES** (AVOID these meals and similar ones): ${mealPreferences.disliked.join(', ')}`);
-    }
-    if (parts.length > 0) {
-      mealPreferencesSection = `\n## User Meal Preferences\n${parts.join('\n')}\n`;
+    const hasLikes = mealPreferences.liked.length > 0;
+    const hasDislikes = mealPreferences.disliked.length > 0;
+
+    if (hasLikes || hasDislikes) {
+      mealPreferencesSection = `
+## User Meal Preferences (IMPORTANT - Follow These Closely)
+`;
+      if (hasLikes) {
+        mealPreferencesSection += `
+### Meals the User LIKES
+The user enjoys these meals. Use them as inspiration for flavor profiles, ingredient combinations, and meal styles they prefer:
+${mealPreferences.liked.map(m => `- ${m}`).join('\n')}
+
+**How to use this**: Create meals with SIMILAR flavor profiles, cuisines, or ingredient styles. You can include some of these exact meals if they haven't been used in the last 3 weeks.
+`;
+      }
+      if (hasDislikes) {
+        mealPreferencesSection += `
+### Meals the User DISLIKES (MUST AVOID)
+The user has explicitly disliked these meals. NEVER include them or meals with similar characteristics:
+${mealPreferences.disliked.map(m => `- ${m}`).join('\n')}
+
+**STRICT REQUIREMENT**: Do NOT generate these meals or meals with similar:
+- Main ingredients or protein sources
+- Flavor profiles or seasonings
+- Cooking styles or preparations
+- Cuisine types (if the pattern suggests they dislike a cuisine)
+`;
+      }
     }
   }
 
@@ -196,7 +338,7 @@ ${mealsList}
   }
 
   return `You are a nutrition expert specializing in meal planning for CrossFit athletes.
-${recentMealsExclusion}${mealPreferencesSection}${validatedMealsSection}
+${varietySection}${mealPreferencesSection}${validatedMealsSection}
 ## User Profile
 - Daily Calorie Target: ${profile.target_calories} kcal
 - Daily Protein Target: ${profile.target_protein}g
@@ -551,22 +693,52 @@ async function generateCoreIngredients(
   if (profile.prep_time <= 15) prepComplexity = 'minimal';
   else if (profile.prep_time >= 45) prepComplexity = 'extensive';
 
+  // Build variety section for ingredient selection based on last 3 meal plans
   let exclusionsSection = '';
   if (recentMealNames && recentMealNames.length > 0) {
-    exclusionsSection = `\n## Avoid Recently Used Meals\nThe user recently had these meals, so try to select ingredients that enable DIFFERENT meals: ${recentMealNames.slice(0, 10).join(', ')}\n`;
+    exclusionsSection = `
+## CRITICAL: Ingredient Variety for Fresh Meals (based on user's last 3 meal plans)
+
+### Recent Meals to Avoid Recreating
+${recentMealNames.slice(0, 30).join(', ')}
+
+### Variety Strategy for Ingredient Selection
+To create DIFFERENT meals from recent weeks, select ingredients that enable:
+
+1. **Different cuisines** - If recent meals were mostly Mediterranean, choose ingredients for Asian, Mexican, or American-style dishes
+2. **Different protein preparations** - If chicken was always baked, pick proteins that work well for stir-frying, grilling, or bowl assembly
+3. **Different flavor bases** - Rotate between:
+   - Citrus-forward (lemon, lime)
+   - Asian aromatics (ginger, soy, sesame)
+   - Mediterranean herbs (oregano, basil, garlic)
+   - Latin spices (cumin, cilantro, chili)
+4. **Different vegetable families** - Mix cruciferous (broccoli, cauliflower), leafy greens, nightshades (peppers, tomatoes), and root vegetables
+`;
   }
 
+  // Build enhanced preferences section for ingredient selection
   let preferencesSection = '';
   if (mealPreferences) {
-    const parts: string[] = [];
-    if (mealPreferences.liked.length > 0) {
-      parts.push(`The user LIKES meals like: ${mealPreferences.liked.join(', ')} - consider ingredients that work for similar meals`);
-    }
-    if (mealPreferences.disliked.length > 0) {
-      parts.push(`The user DISLIKES: ${mealPreferences.disliked.join(', ')} - avoid ingredients strongly associated with these`);
-    }
-    if (parts.length > 0) {
-      preferencesSection = `\n## User Preferences\n${parts.join('\n')}\n`;
+    const hasLikes = mealPreferences.liked.length > 0;
+    const hasDislikes = mealPreferences.disliked.length > 0;
+
+    if (hasLikes || hasDislikes) {
+      preferencesSection = '\n## User Meal Preferences (Use to Guide Ingredient Selection)\n';
+      if (hasLikes) {
+        preferencesSection += `
+**Meals the user LIKES**: ${mealPreferences.liked.join(', ')}
+- Choose ingredients that enable similar flavor profiles and meal styles
+- These meals indicate the user's preferred cuisines and cooking methods
+`;
+      }
+      if (hasDislikes) {
+        preferencesSection += `
+**Meals the user DISLIKES**: ${mealPreferences.disliked.join(', ')}
+- AVOID ingredients strongly associated with these disliked meals
+- Do NOT select proteins, seasonings, or combinations that would lead to similar meals
+- If the user dislikes several meals from a cuisine, avoid ingredients specific to that cuisine
+`;
+      }
     }
   }
 
@@ -804,10 +976,14 @@ The user has ${snacksPerDay} snack slots per day. You MUST generate ${snacksPerD
 `;
   }
 
+  // Build household context if user has household members
+  const householdServings = profile.household_servings ?? DEFAULT_HOUSEHOLD_SERVINGS_PREFS;
+  const householdSection = buildHouseholdContextSection(householdServings);
+
   const prompt = `You are generating a 7-day meal plan for a CrossFit athlete.
 
 **CRITICAL CONSTRAINT**: You MUST use ONLY the ingredients provided below. Do NOT add any new ingredients.
-${preferencesSection}${validatedMealsSection}
+${preferencesSection}${validatedMealsSection}${householdSection}
 ## CORE INGREDIENTS (USE ONLY THESE)
 ${ingredientsJSON}
 ${nutritionReference}
@@ -1087,6 +1263,44 @@ For this user:
 `,
   };
 
+  // Build household context for prep instructions
+  const householdServings = profile.household_servings ?? DEFAULT_HOUSEHOLD_SERVINGS_PREFS;
+  const householdHasMembers = hasHouseholdMembers(householdServings);
+
+  // Build a day/meal specific household servings summary for prep
+  let householdPrepSection = '';
+  if (householdHasMembers) {
+    const mealTypes = ['breakfast', 'lunch', 'dinner', 'snacks'] as const;
+    const servingLines: string[] = [];
+
+    for (const day of DAYS_OF_WEEK) {
+      const dayParts: string[] = [];
+      for (const meal of mealTypes) {
+        const multiplier = getServingMultiplier(householdServings, day, meal);
+        if (multiplier > 1) {
+          dayParts.push(`${meal}: ${multiplier.toFixed(1)}x`);
+        }
+      }
+      if (dayParts.length > 0) {
+        servingLines.push(`- ${DAY_OF_WEEK_LABELS[day]}: ${dayParts.join(', ')}`);
+      }
+    }
+
+    householdPrepSection = `
+## HOUSEHOLD SERVINGS - CRITICAL FOR PREP INSTRUCTIONS
+The athlete is cooking for their household. Your prep instructions MUST include quantities for the FULL batch, not just the athlete.
+
+**Serving multipliers by day/meal:**
+${servingLines.join('\n')}
+
+**IMPORTANT for prep instructions:**
+- Scale ALL ingredient quantities in detailed_steps for the full household
+- Example: If Monday dinner is 2.2x servings, and the base recipe calls for "4 oz salmon", write "9 oz salmon (2.2 servings)"
+- Include the multiplier or total servings in your instructions so the user knows the batch size
+- Meals with 1.0x multiplier are just for the athlete (no scaling needed)
+`;
+  }
+
   const prompt = `You are creating a DETAILED prep schedule for a CrossFit athlete's weekly meal plan. The user needs ACTIONABLE cooking instructions, not just meal descriptions.
 
 ## MEAL PLAN WITH FULL DETAILS
@@ -1097,7 +1311,7 @@ ${JSON.stringify(coreIngredients, null, 2)}
 
 ## WEEK DATES
 ${JSON.stringify(dayDates, null, 2)}
-
+${householdPrepSection}
 ${prepStyleInstructions[prepStyle as PrepStyle]}
 
 ## CRITICAL RULES
@@ -1371,11 +1585,13 @@ Return ONLY valid JSON:
 /**
  * Generate grocery list from core ingredients
  * Converts core ingredients to practical shopping quantities
+ * Scales quantities based on household servings
  */
 async function generateGroceryListFromCoreIngredients(
   coreIngredients: CoreIngredients,
   days: DayPlan[],
-  userId: string
+  userId: string,
+  profile?: UserProfile
 ): Promise<Ingredient[]> {
   // First, collect all ingredient usage from meals to understand quantities
   const ingredientUsage: Map<string, { count: number; amounts: string[] }> = new Map();
@@ -1397,17 +1613,36 @@ async function generateGroceryListFromCoreIngredients(
     .map(([name, data]) => `${name}: used ${data.count} times (${data.amounts.join(', ')})`)
     .join('\n');
 
+  // Calculate household scaling if applicable
+  const householdServings = profile?.household_servings ?? DEFAULT_HOUSEHOLD_SERVINGS_PREFS;
+  const avgMultiplier = getAverageServingMultiplier(householdServings);
+  const householdHasMembers = hasHouseholdMembers(householdServings);
+
+  let householdScalingSection = '';
+  if (householdHasMembers) {
+    householdScalingSection = `
+## HOUSEHOLD SCALING (IMPORTANT)
+The athlete is also feeding their household. Scale grocery quantities by approximately ${avgMultiplier.toFixed(1)}x to account for additional family members.
+
+**Key points:**
+- The base quantities above are for the athlete only
+- Multiply all quantities by approximately ${avgMultiplier.toFixed(1)} to feed the household
+- Round up generously to ensure enough food for everyone
+- It's better to have slightly more than to run short
+`;
+  }
+
   const prompt = `You are creating a practical grocery shopping list from a meal plan's core ingredients.
 
 ## CORE INGREDIENTS
 ${JSON.stringify(coreIngredients, null, 2)}
 
-## INGREDIENT USAGE IN MEALS
+## INGREDIENT USAGE IN MEALS (for athlete only)
 ${usageSummary}
-
+${householdScalingSection}
 ## INSTRUCTIONS
 Convert these core ingredients into a practical grocery shopping list with realistic quantities based on how they're used in the meals.
-
+${householdHasMembers ? `\n**Remember to scale quantities by ~${avgMultiplier.toFixed(1)}x for the household.**\n` : ''}
 Use practical shopping quantities:
 - Use "whole" or count for items bought individually (e.g., "3" avocados)
 - Use "lb" or "oz" for meats and proteins
@@ -1577,7 +1812,7 @@ export async function generateMealPlanWithProgress(
   progress('finalizing', 'Building grocery list and prep schedule...');
 
   const [grocery_list, prep_sessions] = await Promise.all([
-    generateGroceryListFromCoreIngredients(coreIngredients, days, userId),
+    generateGroceryListFromCoreIngredients(coreIngredients, days, userId, profile),
     generatePrepSessions(days, coreIngredients, profile, userId),
   ]);
 

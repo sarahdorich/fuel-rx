@@ -24,20 +24,24 @@ export async function POST() {
     return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
   }
 
-  // Query the user's most recent meal plan to avoid repeating meals
-  const { data: recentPlan } = await supabase
+  // Query the user's last 3 meal plans to avoid repeating meals and provide variety
+  const { data: recentPlans } = await supabase
     .from('meal_plans')
     .select('plan_data')
     .eq('user_id', user.id)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+    .limit(3)
 
-  // Extract meal names from the recent plan (if exists)
+  // Extract meal names from recent plans (if any exist)
   let recentMealNames: string[] = []
-  if (recentPlan?.plan_data) {
-    const planData = recentPlan.plan_data as { day: string; meals: { name: string }[] }[]
-    recentMealNames = planData.flatMap(day => day.meals.map(meal => meal.name))
+  if (recentPlans && recentPlans.length > 0) {
+    recentMealNames = recentPlans.flatMap(plan => {
+      if (!plan.plan_data) return []
+      const planData = plan.plan_data as { day: string; meals: { name: string }[] }[]
+      return planData.flatMap(day => day.meals.map(meal => meal.name))
+    })
+    // Remove duplicates while preserving order
+    recentMealNames = [...new Set(recentMealNames)]
   }
 
   // Fetch user's meal preferences (likes/dislikes)
