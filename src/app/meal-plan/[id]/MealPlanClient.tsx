@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros, CoreIngredients, PrepModeResponse, DailyAssembly, IngredientNutritionUserOverride } from '@/lib/types'
+import type { DayPlan, Meal, Ingredient, MealPreferenceType, Macros, CoreIngredients, PrepModeResponse, DailyAssembly, IngredientNutritionUserOverride, IngredientPreferenceType, IngredientPreferenceWithDetails } from '@/lib/types'
 import PrepModeView from '@/components/PrepModeView'
 import CoreIngredientsCard from '@/components/CoreIngredientsCard'
 
@@ -32,6 +32,13 @@ interface Props {
 
 interface MealPreferencesMap {
   [mealName: string]: MealPreferenceType
+}
+
+interface IngredientPreferencesMap {
+  [ingredientNameNormalized: string]: {
+    ingredientId: string
+    preference: IngredientPreferenceType
+  }
 }
 
 const DAY_LABELS: Record<string, string> = {
@@ -63,6 +70,9 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
   // Meal preferences state
   const [mealPreferences, setMealPreferences] = useState<MealPreferencesMap>({})
 
+  // Ingredient preferences state
+  const [ingredientPreferences, setIngredientPreferences] = useState<IngredientPreferencesMap>({})
+
   // View mode state (meal view vs prep view)
   const [viewMode, setViewMode] = useState<'meals' | 'prep'>('meals')
 
@@ -92,6 +102,29 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
     }
     loadMealPreferences()
   }, [supabase])
+
+  // Load ingredient preferences on mount
+  useEffect(() => {
+    const loadIngredientPreferences = async () => {
+      try {
+        const response = await fetch('/api/ingredient-preferences')
+        if (response.ok) {
+          const data: IngredientPreferenceWithDetails[] = await response.json()
+          const prefsMap: IngredientPreferencesMap = {}
+          data.forEach(pref => {
+            prefsMap[pref.name_normalized] = {
+              ingredientId: pref.ingredient_id,
+              preference: pref.preference
+            }
+          })
+          setIngredientPreferences(prefsMap)
+        }
+      } catch (error) {
+        console.error('Error loading ingredient preferences:', error)
+      }
+    }
+    loadIngredientPreferences()
+  }, [])
 
   // Load prep sessions when switching to prep view
   useEffect(() => {
@@ -317,6 +350,62 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
       if (!error) {
         setMealPreferences({ ...mealPreferences, [mealName]: preference })
       }
+    }
+  }
+
+  const toggleIngredientPreference = async (ingredientName: string, preference: IngredientPreferenceType) => {
+    const normalizedName = ingredientName.toLowerCase().trim()
+    const currentPref = ingredientPreferences[normalizedName]
+
+    try {
+      if (currentPref?.preference === preference) {
+        // Remove preference if clicking the same button
+        const response = await fetch(`/api/ingredient-preferences?ingredient_id=${currentPref.ingredientId}`, {
+          method: 'DELETE',
+        })
+
+        if (response.ok) {
+          const newPrefs = { ...ingredientPreferences }
+          delete newPrefs[normalizedName]
+          setIngredientPreferences(newPrefs)
+        }
+      } else {
+        // First, get or create the ingredient
+        const ingredientResponse = await fetch('/api/ingredients/by-name', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: ingredientName }),
+        })
+
+        if (!ingredientResponse.ok) {
+          console.error('Failed to get/create ingredient')
+          return
+        }
+
+        const ingredient = await ingredientResponse.json()
+
+        // Then save the preference
+        const prefResponse = await fetch('/api/ingredient-preferences', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ingredient_id: ingredient.id,
+            preference: preference,
+          }),
+        })
+
+        if (prefResponse.ok) {
+          setIngredientPreferences({
+            ...ingredientPreferences,
+            [normalizedName]: {
+              ingredientId: ingredient.id,
+              preference: preference,
+            },
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Error toggling ingredient preference:', error)
     }
   }
 
@@ -555,6 +644,9 @@ export default function MealPlanClient({ mealPlan: initialMealPlan }: Props) {
                       updateIngredientInMeal(dayIndex, mealIndex, ingredientIndex, newIngredient)
                     }
                     mealPlanId={mealPlan.id}
+                    ingredientPreferences={ingredientPreferences}
+                    onIngredientLike={(name) => toggleIngredientPreference(name, 'liked')}
+                    onIngredientDislike={(name) => toggleIngredientPreference(name, 'disliked')}
                   />
                 )
               })}
@@ -586,6 +678,9 @@ function MealCard({
   onMacrosChange,
   onIngredientChange,
   mealPlanId,
+  ingredientPreferences,
+  onIngredientLike,
+  onIngredientDislike,
 }: {
   meal: Meal
   isExpanded: boolean
@@ -596,6 +691,9 @@ function MealCard({
   onMacrosChange: (macros: Macros) => Promise<boolean>
   onIngredientChange: (ingredientIndex: number, newIngredient: Ingredient) => Promise<boolean>
   mealPlanId: string
+  ingredientPreferences: IngredientPreferencesMap
+  onIngredientLike: (ingredientName: string) => void
+  onIngredientDislike: (ingredientName: string) => void
 }) {
   const [isEditingMacros, setIsEditingMacros] = useState(false)
   const [macrosValue, setMacrosValue] = useState({
@@ -864,6 +962,9 @@ function MealCard({
                     }}
                     mealName={meal.name}
                     mealPlanId={mealPlanId}
+                    preference={ingredientPreferences[ing.name.toLowerCase().trim()]?.preference}
+                    onLike={() => onIngredientLike(ing.name)}
+                    onDislike={() => onIngredientDislike(ing.name)}
                   />
                 ))}
               </ul>
@@ -897,6 +998,9 @@ function IngredientRow({
   onSave,
   mealName,
   mealPlanId,
+  preference,
+  onLike,
+  onDislike,
 }: {
   ingredient: Ingredient
   isEditing: boolean
@@ -906,6 +1010,9 @@ function IngredientRow({
   onSave: (updatedIngredient: Ingredient) => Promise<void>
   mealName: string
   mealPlanId: string
+  preference?: IngredientPreferenceType
+  onLike: () => void
+  onDislike: () => void
 }) {
   const [editValues, setEditValues] = useState({
     calories: ingredient.calories?.toString() || '0',
@@ -1025,24 +1132,59 @@ function IngredientRow({
   }
 
   return (
-    <li
-      className="text-sm text-gray-600 p-2 hover:bg-gray-50 rounded cursor-pointer group transition-colors"
-      onClick={onStartEdit}
-    >
-      <div className="flex justify-between items-start">
-        <span>{ingredient.amount} {ingredient.unit} {ingredient.name}</span>
-        <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 flex-shrink-0 ml-2 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-        </svg>
-      </div>
-      {hasNutritionData && (
-        <div className="flex gap-3 text-xs text-gray-400 mt-1">
-          <span>{ingredient.calories} cal</span>
-          <span className="text-blue-400">{ingredient.protein}g P</span>
-          <span className="text-orange-400">{ingredient.carbs}g C</span>
-          <span className="text-purple-400">{ingredient.fat}g F</span>
+    <li className="text-sm text-gray-600 p-2 hover:bg-gray-50 rounded group transition-colors">
+      <div className="flex justify-between items-center">
+        <div className="flex-1 cursor-pointer" onClick={onStartEdit}>
+          <div className="flex items-start gap-1">
+            <span>{ingredient.amount} {ingredient.unit} {ingredient.name}</span>
+            <svg className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 flex-shrink-0 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+            </svg>
+          </div>
+          {hasNutritionData && (
+            <div className="flex gap-3 text-xs text-gray-400 mt-1">
+              <span>{ingredient.calories} cal</span>
+              <span className="text-blue-400">{ingredient.protein}g P</span>
+              <span className="text-orange-400">{ingredient.carbs}g C</span>
+              <span className="text-purple-400">{ingredient.fat}g F</span>
+            </div>
+          )}
         </div>
-      )}
+        <div className="flex items-center gap-1 ml-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onLike()
+            }}
+            className={`p-1 rounded-full transition-colors ${
+              preference === 'liked'
+                ? 'bg-green-100 text-green-600'
+                : 'text-gray-300 hover:text-green-500 hover:bg-green-50'
+            }`}
+            title="Like this ingredient"
+          >
+            <svg className="w-4 h-4" fill={preference === 'liked' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5" />
+            </svg>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onDislike()
+            }}
+            className={`p-1 rounded-full transition-colors ${
+              preference === 'disliked'
+                ? 'bg-red-100 text-red-600'
+                : 'text-gray-300 hover:text-red-500 hover:bg-red-50'
+            }`}
+            title="Dislike this ingredient"
+          >
+            <svg className="w-4 h-4" fill={preference === 'disliked' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018c.163 0 .326.02.485.06L17 4m-7 10v2a2 2 0 002 2h.095c.5 0 .905-.405.905-.905 0-.714.211-1.412.608-2.006L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5" />
+            </svg>
+          </button>
+        </div>
+      </div>
     </li>
   )
 }

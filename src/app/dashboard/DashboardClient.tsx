@@ -308,10 +308,10 @@ export default function DashboardClient({ profile: initialProfile, recentPlan }:
               </h3>
               <div className="flex gap-4">
                 <Link
-                  href="/settings/social"
-                  className="text-gray-400 hover:text-gray-600 text-sm"
+                  href="/settings"
+                  className="text-primary-600 hover:text-primary-700 text-sm font-medium"
                 >
-                  Social Settings
+                  All Settings
                 </Link>
                 <Link
                   href="/onboarding"
