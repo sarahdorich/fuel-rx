@@ -340,15 +340,14 @@ function buildHouseholdContextSection(servings: HouseholdServingsPrefs): string 
 
   return `
 ## HOUSEHOLD SERVINGS (IMPORTANT)
-The athlete is also cooking for their household. Generate prep instructions and grocery quantities for the FULL household, not just the athlete.
+The athlete is also cooking for their household.
 
 **Household schedule:**
 ${lines.join('\n')}
 
 **Key guidelines:**
 - The athlete's personal macro targets are still the priority for meal COMPOSITION
-- But prep instructions should be for the FULL batch size (all household members)
-- Grocery quantities should be scaled to feed everyone
+- Ingredient amounts in meals should be for the ATHLETE ONLY (grocery scaling is handled separately)
 - Children count as approximately 0.6x an adult portion
 - Choose meals that scale well and are broadly appealing when feeding children
 `;
@@ -1949,12 +1948,20 @@ async function generateGroceryListFromCoreIngredients(
   let householdScalingSection = '';
   if (householdHasMembers) {
     householdScalingSection = `
-## HOUSEHOLD CONTEXT
-The meal plan was generated for a household of ${getHouseholdDescription(householdServings)}.
-The ingredient usage amounts shown above are ALREADY SCALED for the full household.
-Your job is to consolidate these pre-scaled amounts into practical shopping quantities.
+## HOUSEHOLD SCALING - READ CAREFULLY
+The ingredient usage above shows ATHLETE-ONLY portions (1 person).
+The household has ${getHouseholdDescription(householdServings)}, which means an average of ${avgMultiplier.toFixed(1)}x portions per meal.
 
-**DO NOT multiply by ${avgMultiplier.toFixed(1)}x again - that would be double-scaling.**
+**YOUR TASK**: Multiply the total ingredient amounts by approximately ${avgMultiplier.toFixed(1)}x to account for the full household, THEN consolidate into practical shopping quantities.
+
+Example: If the athlete uses "chicken breast: 8 oz × 7 meals = 56 oz (3.5 lb)" for the week,
+the household (${avgMultiplier.toFixed(1)}x) needs approximately ${(3.5 * avgMultiplier).toFixed(1)} lb total.
+`;
+  } else {
+    householdScalingSection = `
+## SCALING NOTE
+This meal plan is for a SINGLE PERSON (the athlete only). No household scaling needed.
+Simply consolidate the ingredient usage into practical shopping quantities.
 `;
   }
 
@@ -1990,11 +1997,9 @@ If your calculated quantities exceed these by 2x or more, you're scaling incorre
 ## INSTRUCTIONS
 Convert these core ingredients into a practical grocery shopping list with realistic quantities.
 
-**IMPORTANT SCALING NOTES:**
+**SCALING REMINDER:**
 ${householdHasMembers
-  ? `The usage data above shows how ingredients are used in meals for the FULL HOUSEHOLD already.
-     DO NOT multiply quantities again - the amounts are already scaled.
-     Your job is to CONSOLIDATE and round to PRACTICAL shopping units, not to scale further.`
+  ? `The usage data above shows ATHLETE-ONLY portions. You MUST apply the ${avgMultiplier.toFixed(1)}x household multiplier when calculating totals, then consolidate into practical shopping units.`
   : `The usage data shows athlete-only portions. Round up slightly for shopping convenience.`}
 
 Use practical shopping quantities:
@@ -2040,34 +2045,74 @@ Sort by category: produce, protein, dairy, grains, pantry, frozen, other`;
   // Parse the JSON response
   const parsed = extractAndParseJSON<{ grocery_list: Ingredient[] }>(responseText, 'grocery list from core ingredients');
 
-  // Validate quantities are reasonable
-  const warnings: string[] = [];
-  for (const item of parsed.grocery_list) {
-    const amount = parseFloat(item.amount);
-    if (isNaN(amount)) continue;
+  // Define reasonable maximum quantities for a week's worth of groceries
+  // These limits are generous enough for a family of 4-5 but prevent absurd quantities
+  const maxQuantities: Record<string, { max: number; unit: string }> = {
+    // Produce - whole items
+    'bell pepper': { max: 12, unit: 'whole' },
+    'avocado': { max: 14, unit: 'whole' },
+    'orange': { max: 18, unit: 'whole' },
+    'apple': { max: 18, unit: 'whole' },
+    'banana': { max: 14, unit: 'whole' },
+    'lemon': { max: 10, unit: 'whole' },
+    'lime': { max: 10, unit: 'whole' },
+    'onion': { max: 8, unit: 'whole' },
+    'zucchini': { max: 10, unit: 'whole' },
+    'cucumber': { max: 8, unit: 'whole' },
+    'tomato': { max: 12, unit: 'whole' },
+    'sweet potato': { max: 10, unit: 'whole' },
+    // Proteins - by weight
+    'chicken': { max: 8, unit: 'lb' },
+    'beef': { max: 6, unit: 'lb' },
+    'salmon': { max: 5, unit: 'lb' },
+    'fish': { max: 5, unit: 'lb' },
+    'turkey': { max: 6, unit: 'lb' },
+    'pork': { max: 5, unit: 'lb' },
+    'shrimp': { max: 3, unit: 'lb' },
+  };
 
-    // Check for suspiciously high quantities
-    if (item.unit === 'whole' && amount > 20 && !item.name.toLowerCase().includes('egg')) {
-      warnings.push(`Suspiciously high: ${amount} ${item.name}`);
+  // Validate and cap quantities
+  const warnings: string[] = [];
+  const cappedGroceryList = parsed.grocery_list.map(item => {
+    const amount = parseFloat(item.amount);
+    if (isNaN(amount)) return item;
+
+    const nameLower = item.name.toLowerCase();
+
+    // Check against specific limits
+    for (const [ingredient, limit] of Object.entries(maxQuantities)) {
+      if (nameLower.includes(ingredient) && amount > limit.max) {
+        warnings.push(`Capped ${item.name}: ${amount} → ${limit.max} ${item.unit}`);
+        return { ...item, amount: String(limit.max) };
+      }
+    }
+
+    // General fallback limits for items not in the specific list
+    if (item.unit === 'whole' && amount > 20 && !nameLower.includes('egg')) {
+      warnings.push(`Capped ${item.name}: ${amount} → 15 whole`);
+      return { ...item, amount: '15' };
     }
     if (item.unit === 'lb' && amount > 10) {
-      warnings.push(`Suspiciously high: ${amount} lb ${item.name}`);
+      warnings.push(`Capped ${item.name}: ${amount} → 8 lb`);
+      return { ...item, amount: '8' };
     }
-  }
+
+    return item;
+  });
 
   if (warnings.length > 0) {
-    console.warn('Grocery list validation warnings:', warnings);
+    console.warn('Grocery list quantities capped:', warnings);
     // Log to database for monitoring
     await logLLMCall({
       user_id: userId,
-      prompt: 'VALIDATION_WARNING',
+      prompt: 'QUANTITY_CAPPED',
       output: warnings.join('; '),
       model: 'validation',
       prompt_type: 'grocery_list_validation',
     });
   }
 
-  return parsed.grocery_list;
+  return cappedGroceryList;
 }
 
 /**
