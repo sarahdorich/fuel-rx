@@ -55,6 +55,17 @@ export async function POST() {
     disliked: mealPrefsData?.filter(p => p.preference === 'disliked').map(p => p.meal_name) || [],
   }
 
+  // Fetch user's ingredient preferences (likes/dislikes)
+  const { data: ingredientPrefsData } = await supabase
+    .from('ingredient_preferences_with_details')
+    .select('ingredient_name, preference')
+    .eq('user_id', user.id)
+
+  const ingredientPreferences = {
+    liked: ingredientPrefsData?.filter(p => p.preference === 'liked').map(p => p.ingredient_name) || [],
+    disliked: ingredientPrefsData?.filter(p => p.preference === 'disliked').map(p => p.ingredient_name) || [],
+  }
+
   // Fetch user's validated meals (user-corrected calorie/macro data)
   const { data: validatedMealsData } = await supabase
     .from('validated_meals_by_user')
@@ -82,7 +93,8 @@ export async function POST() {
       user.id,
       recentMealNames,
       mealPreferences,
-      validatedMeals
+      validatedMeals,
+      ingredientPreferences
     )
 
     // Calculate week start date (next Monday)

@@ -545,13 +545,30 @@ export interface PrepModeResponse {
 }
 
 // ============================================
+// Ingredient Types
+// ============================================
+
+// Ingredient category for the dimension table
+export type IngredientCategoryType = 'protein' | 'vegetable' | 'fruit' | 'grain' | 'fat' | 'dairy' | 'pantry' | 'other';
+
+// Ingredient dimension table - unique ingredient identity
+export interface IngredientRecord {
+  id: string;
+  name: string;
+  name_normalized: string;
+  category: IngredientCategoryType | null;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================
 // Ingredient Nutrition Cache Types
 // ============================================
 
 export interface IngredientNutrition {
   id: string;
-  name: string;
-  name_normalized: string;
+  ingredient_id: string; // FK to ingredients table
   serving_size: number;
   serving_unit: string;
   calories: number;
@@ -567,6 +584,13 @@ export interface IngredientNutrition {
   validated?: boolean;
   created_at: string;
   updated_at: string;
+}
+
+// Extended nutrition with ingredient details (from view)
+export interface IngredientNutritionWithDetails extends IngredientNutrition {
+  ingredient_name: string;
+  name_normalized: string;
+  category: IngredientCategoryType | null;
 }
 
 // User override for ingredient nutrition (pending expert validation)
@@ -595,6 +619,26 @@ export interface IngredientNutritionUserOverride {
   validation_notes?: string;
   created_at: string;
   updated_at: string;
+}
+
+// Ingredient preference (like/dislike)
+export type IngredientPreferenceType = 'liked' | 'disliked';
+
+export interface IngredientPreference {
+  id: string;
+  user_id: string;
+  ingredient_id: string;
+  preference: IngredientPreferenceType;
+  created_at: string;
+  updated_at: string;
+}
+
+// Extended ingredient preference with ingredient details (from view)
+export interface IngredientPreferenceWithDetails extends IngredientPreference {
+  ingredient_name: string;
+  name_normalized: string;
+  category: IngredientCategoryType | null;
+  description?: string;
 }
 
 // Core ingredient with quantity estimation for weekly calorie targets

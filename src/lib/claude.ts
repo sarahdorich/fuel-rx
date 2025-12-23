@@ -15,7 +15,7 @@ import type {
   DailyAssembly,
   PrepModeResponse,
   DayOfWeek,
-  IngredientNutrition,
+  IngredientNutritionWithDetails,
   PrepStyle,
   MealComplexity,
   PrepSessionType,
@@ -31,13 +31,14 @@ import { createClient } from './supabase/server';
 /**
  * Fetch cached nutrition data for ingredients
  * Returns a map of normalized ingredient names to nutrition data
+ * Uses the ingredient_nutrition_with_details view for convenience
  */
-async function fetchCachedNutrition(ingredientNames: string[]): Promise<Map<string, IngredientNutrition>> {
+async function fetchCachedNutrition(ingredientNames: string[]): Promise<Map<string, IngredientNutritionWithDetails>> {
   const supabase = await createClient();
   const normalizedNames = ingredientNames.map(name => name.toLowerCase().trim());
 
   const { data, error } = await supabase
-    .from('ingredient_nutrition')
+    .from('ingredient_nutrition_with_details')
     .select('*')
     .in('name_normalized', normalizedNames);
 
@@ -46,16 +47,68 @@ async function fetchCachedNutrition(ingredientNames: string[]): Promise<Map<stri
     return new Map();
   }
 
-  const nutritionMap = new Map<string, IngredientNutrition>();
+  const nutritionMap = new Map<string, IngredientNutritionWithDetails>();
   for (const item of data || []) {
-    nutritionMap.set(item.name_normalized, item as IngredientNutrition);
+    nutritionMap.set(item.name_normalized, item as IngredientNutritionWithDetails);
   }
 
   return nutritionMap;
 }
 
 /**
+ * Get or create an ingredient in the ingredients dimension table
+ * Returns the ingredient ID
+ */
+async function getOrCreateIngredient(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  name: string,
+  category: string = 'other'
+): Promise<string | null> {
+  const normalizedName = name.toLowerCase().trim();
+
+  // Try to find existing ingredient
+  const { data: existing } = await supabase
+    .from('ingredients')
+    .select('id')
+    .eq('name_normalized', normalizedName)
+    .single();
+
+  if (existing) {
+    return existing.id;
+  }
+
+  // Create new ingredient
+  const { data: created, error } = await supabase
+    .from('ingredients')
+    .insert({
+      name,
+      name_normalized: normalizedName,
+      category,
+    })
+    .select('id')
+    .single();
+
+  if (error) {
+    // Handle race condition - another request might have created it
+    if (error.code === '23505') { // unique_violation
+      const { data: retry } = await supabase
+        .from('ingredients')
+        .select('id')
+        .eq('name_normalized', normalizedName)
+        .single();
+      return retry?.id || null;
+    }
+    console.error('Error creating ingredient:', error);
+    return null;
+  }
+
+  return created?.id || null;
+}
+
+/**
  * Cache new nutrition data for ingredients
+ * First ensures the ingredient exists in the ingredients table,
+ * then adds the nutrition data for the specific serving size
  */
 async function cacheIngredientNutrition(
   ingredients: Array<{
@@ -66,44 +119,52 @@ async function cacheIngredientNutrition(
     protein: number;
     carbs: number;
     fat: number;
+    category?: string;
   }>
 ): Promise<void> {
   const supabase = await createClient();
 
-  const inserts = ingredients.map(ing => ({
-    name: ing.name,
-    name_normalized: ing.name.toLowerCase().trim(),
-    serving_size: ing.serving_size,
-    serving_unit: ing.serving_unit,
-    calories: ing.calories,
-    protein: ing.protein,
-    carbs: ing.carbs,
-    fat: ing.fat,
-    source: 'llm_estimated' as const,
-    confidence_score: 0.7,
-  }));
+  for (const ing of ingredients) {
+    // Get or create the ingredient
+    const ingredientId = await getOrCreateIngredient(supabase, ing.name, ing.category || 'other');
 
-  // Use upsert to avoid duplicates
-  const { error } = await supabase
-    .from('ingredient_nutrition')
-    .upsert(inserts, {
-      onConflict: 'name_normalized,serving_size,serving_unit',
-      ignoreDuplicates: true,
-    });
+    if (!ingredientId) {
+      console.error(`Failed to get/create ingredient: ${ing.name}`);
+      continue;
+    }
 
-  if (error) {
-    console.error('Error caching ingredient nutrition:', error);
+    // Insert nutrition data for this serving size
+    const { error } = await supabase
+      .from('ingredient_nutrition')
+      .upsert({
+        ingredient_id: ingredientId,
+        serving_size: ing.serving_size,
+        serving_unit: ing.serving_unit,
+        calories: ing.calories,
+        protein: ing.protein,
+        carbs: ing.carbs,
+        fat: ing.fat,
+        source: 'llm_estimated' as const,
+        confidence_score: 0.7,
+      }, {
+        onConflict: 'ingredient_id,serving_size,serving_unit',
+        ignoreDuplicates: true,
+      });
+
+    if (error) {
+      console.error(`Error caching nutrition for ${ing.name}:`, error);
+    }
   }
 }
 
 /**
  * Build a nutrition reference string from cached data for LLM prompts
  */
-function buildNutritionReferenceSection(nutritionCache: Map<string, IngredientNutrition>): string {
+function buildNutritionReferenceSection(nutritionCache: Map<string, IngredientNutritionWithDetails>): string {
   if (nutritionCache.size === 0) return '';
 
   const lines = Array.from(nutritionCache.values()).map(n =>
-    `- ${n.name}: ${n.calories} cal, ${n.protein}g protein, ${n.carbs}g carbs, ${n.fat}g fat per ${n.serving_size} ${n.serving_unit}`
+    `- ${n.ingredient_name}: ${n.calories} cal, ${n.protein}g protein, ${n.carbs}g carbs, ${n.fat}g fat per ${n.serving_size} ${n.serving_unit}`
   );
 
   return `
@@ -673,7 +734,8 @@ async function generateCoreIngredients(
   profile: UserProfile,
   userId: string,
   recentMealNames?: string[],
-  mealPreferences?: { liked: string[]; disliked: string[] }
+  mealPreferences?: { liked: string[]; disliked: string[] },
+  ingredientPreferences?: { liked: string[]; disliked: string[] }
 ): Promise<CoreIngredients> {
   const dietaryPrefs = profile.dietary_prefs ?? ['no_restrictions'];
   const dietaryPrefsText = dietaryPrefs
@@ -742,6 +804,31 @@ To create DIFFERENT meals from recent weeks, select ingredients that enable:
     }
   }
 
+  // Build ingredient preferences section
+  let ingredientPreferencesSection = '';
+  if (ingredientPreferences) {
+    const hasLikedIngredients = ingredientPreferences.liked.length > 0;
+    const hasDislikedIngredients = ingredientPreferences.disliked.length > 0;
+
+    if (hasLikedIngredients || hasDislikedIngredients) {
+      ingredientPreferencesSection = '\n## User Ingredient Preferences (CRITICAL - MUST FOLLOW)\n';
+      if (hasLikedIngredients) {
+        ingredientPreferencesSection += `
+**Ingredients the user LIKES** (prioritize including these):
+${ingredientPreferences.liked.map(i => `- ${i}`).join('\n')}
+`;
+      }
+      if (hasDislikedIngredients) {
+        ingredientPreferencesSection += `
+**Ingredients the user DISLIKES** (NEVER include these):
+${ingredientPreferences.disliked.map(i => `- ${i}`).join('\n')}
+
+⚠️ STRICT RULE: Do NOT include any disliked ingredients in your selection. The user has explicitly marked these as ingredients they do not want.
+`;
+      }
+    }
+  }
+
   // Fetch cached nutrition data for common ingredients to provide as reference
   const commonIngredients = [
     'chicken breast', 'ground beef', 'salmon', 'eggs', 'greek yogurt',
@@ -752,7 +839,7 @@ To create DIFFERENT meals from recent weeks, select ingredients that enable:
   const nutritionReference = buildNutritionReferenceSection(nutritionCache);
 
   const prompt = `You are a meal planning assistant for CrossFit athletes. Your job is to select a focused set of core ingredients for one week of meals that will MEET THE USER'S CALORIE AND MACRO TARGETS.
-${exclusionsSection}${preferencesSection}
+${exclusionsSection}${preferencesSection}${ingredientPreferencesSection}
 ## CRITICAL: WEEKLY CALORIE TARGET
 The user needs approximately ${weeklyCalories} calories for the week (${profile.target_calories} per day).
 - Weekly Protein Target: ${weeklyProtein}g (${profile.target_protein}g/day)
@@ -1094,6 +1181,56 @@ ${snacksPerDay > 1 ? `Include "snack_number" field for snacks to distinguish sna
   }
 
   const parsed = JSON.parse(jsonText);
+
+  // Cache all unique ingredients to ingredient_nutrition table
+  // This builds our ingredient database over time for consistency
+  const ingredientMap = new Map<string, {
+    name: string;
+    serving_size: number;
+    serving_unit: string;
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
+  }>();
+
+  for (const meal of parsed.meals || []) {
+    for (const ingredient of meal.ingredients || []) {
+      // Create a unique key based on normalized name + serving size + unit
+      const normalizedName = ingredient.name.toLowerCase().trim();
+      const servingSize = parseFloat(ingredient.amount) || 1;
+      const servingUnit = ingredient.unit || 'serving';
+      const key = `${normalizedName}|${servingSize}|${servingUnit}`;
+
+      // Only add if we haven't seen this exact ingredient+serving combo
+      // and it has valid nutrition data
+      if (!ingredientMap.has(key) &&
+          ingredient.calories !== undefined &&
+          ingredient.protein !== undefined &&
+          ingredient.carbs !== undefined &&
+          ingredient.fat !== undefined) {
+        ingredientMap.set(key, {
+          name: ingredient.name,
+          serving_size: servingSize,
+          serving_unit: servingUnit,
+          calories: ingredient.calories,
+          protein: ingredient.protein,
+          carbs: ingredient.carbs,
+          fat: ingredient.fat,
+        });
+      }
+    }
+  }
+
+  // Cache all unique ingredients (async, don't block return)
+  if (ingredientMap.size > 0) {
+    const ingredientsToCache = Array.from(ingredientMap.values());
+    // Fire and forget - don't wait for caching to complete
+    cacheIngredientNutrition(ingredientsToCache).catch(err => {
+      console.error('Failed to cache ingredient nutrition:', err);
+    });
+  }
+
   return parsed;
 }
 
@@ -1745,7 +1882,8 @@ export async function generateMealPlanTwoStage(
   userId: string,
   recentMealNames?: string[],
   mealPreferences?: { liked: string[]; disliked: string[] },
-  validatedMeals?: ValidatedMealMacros[]
+  validatedMeals?: ValidatedMealMacros[],
+  ingredientPreferences?: { liked: string[]; disliked: string[] }
 ): Promise<{
   days: DayPlan[];
   grocery_list: Ingredient[];
@@ -1759,6 +1897,7 @@ export async function generateMealPlanTwoStage(
     recentMealNames,
     mealPreferences,
     validatedMeals,
+    ingredientPreferences,
     () => {} // No-op progress callback
   );
 }
@@ -1774,6 +1913,7 @@ export async function generateMealPlanWithProgress(
   recentMealNames?: string[],
   mealPreferences?: { liked: string[]; disliked: string[] },
   validatedMeals?: ValidatedMealMacros[],
+  ingredientPreferences?: { liked: string[]; disliked: string[] },
   onProgress?: ProgressCallback
 ): Promise<{
   days: DayPlan[];
@@ -1789,7 +1929,8 @@ export async function generateMealPlanWithProgress(
     profile,
     userId,
     recentMealNames,
-    mealPreferences
+    mealPreferences,
+    ingredientPreferences
   );
   progress('ingredients_done', 'Ingredients selected!');
 
